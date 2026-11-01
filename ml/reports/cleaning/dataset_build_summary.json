@@ -1,0 +1,13 @@
+{
+  "unique_accounts": 2000,
+  "unique_subscriptions": 2000,
+  "total_merged_rows": 2000,
+  "total_columns": 33,
+  "subscriptions_with_invoices": 120,
+  "subscription_invoice_coverage_pct": 6.0,
+  "subscriptions_with_payments": 118,
+  "subscription_payment_coverage_pct": 5.9,
+  "is_one_to_one_account_subscription": true,
+  "churn_rate_pct": 20.5,
+  "output_path": "/home/ahmetcan/b2b-churn-intelligence/ml/data/processed/merged/account_level_eda_dataset.csv"
+}

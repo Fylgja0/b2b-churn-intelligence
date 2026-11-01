@@ -1,0 +1,519 @@
+{
+  "all_passed": true,
+  "total_checks": 30,
+  "passed_checks": 30,
+  "failed_checks": 0,
+  "checks": [
+    {
+      "check_name": "row_counts_pre_post",
+      "category": "row_counts",
+      "passed": true,
+      "details": {
+        "plans": {
+          "raw_rows": 5,
+          "clean_rows": 4,
+          "duplicates_removed": 1
+        },
+        "accounts": {
+          "raw_rows": 2001,
+          "clean_rows": 2000,
+          "duplicates_removed": 1
+        },
+        "subscriptions": {
+          "raw_rows": 2001,
+          "clean_rows": 2000,
+          "duplicates_removed": 1
+        },
+        "invoices": {
+          "raw_rows": 2001,
+          "clean_rows": 2000,
+          "duplicates_removed": 1
+        },
+        "payments": {
+          "raw_rows": 2001,
+          "clean_rows": 2000,
+          "duplicates_removed": 1
+        }
+      },
+      "message": "Pre and post row counts verified (1 duplicate removed per table)."
+    },
+    {
+      "check_name": "pk_uniqueness_plans",
+      "category": "primary_key",
+      "passed": true,
+      "details": {
+        "table": "plans",
+        "pk_column": "plan_id",
+        "total_rows": 4,
+        "unique_keys": 4,
+        "null_keys": 0
+      },
+      "message": "Primary key 'plan_id' in 'plans' is unique and non-null: True."
+    },
+    {
+      "check_name": "pk_uniqueness_accounts",
+      "category": "primary_key",
+      "passed": true,
+      "details": {
+        "table": "accounts",
+        "pk_column": "account_id",
+        "total_rows": 2000,
+        "unique_keys": 2000,
+        "null_keys": 0
+      },
+      "message": "Primary key 'account_id' in 'accounts' is unique and non-null: True."
+    },
+    {
+      "check_name": "pk_uniqueness_subscriptions",
+      "category": "primary_key",
+      "passed": true,
+      "details": {
+        "table": "subscriptions",
+        "pk_column": "subscription_id",
+        "total_rows": 2000,
+        "unique_keys": 2000,
+        "null_keys": 0
+      },
+      "message": "Primary key 'subscription_id' in 'subscriptions' is unique and non-null: True."
+    },
+    {
+      "check_name": "pk_uniqueness_invoices",
+      "category": "primary_key",
+      "passed": true,
+      "details": {
+        "table": "invoices",
+        "pk_column": "invoice_id",
+        "total_rows": 2000,
+        "unique_keys": 2000,
+        "null_keys": 0
+      },
+      "message": "Primary key 'invoice_id' in 'invoices' is unique and non-null: True."
+    },
+    {
+      "check_name": "pk_uniqueness_payments",
+      "category": "primary_key",
+      "passed": true,
+      "details": {
+        "table": "payments",
+        "pk_column": "payment_id",
+        "total_rows": 2000,
+        "unique_keys": 2000,
+        "null_keys": 0
+      },
+      "message": "Primary key 'payment_id' in 'payments' is unique and non-null: True."
+    },
+    {
+      "check_name": "fk_subscriptions_account_id_to_accounts_account_id",
+      "category": "foreign_key",
+      "passed": true,
+      "details": {
+        "child_table": "subscriptions",
+        "child_column": "account_id",
+        "parent_table": "accounts",
+        "parent_column": "account_id",
+        "orphan_count": 0,
+        "orphan_samples": []
+      },
+      "message": "FK relationship subscriptions.account_id -> accounts.account_id has 0 orphans."
+    },
+    {
+      "check_name": "fk_subscriptions_plan_id_to_plans_plan_id",
+      "category": "foreign_key",
+      "passed": true,
+      "details": {
+        "child_table": "subscriptions",
+        "child_column": "plan_id",
+        "parent_table": "plans",
+        "parent_column": "plan_id",
+        "orphan_count": 0,
+        "orphan_samples": []
+      },
+      "message": "FK relationship subscriptions.plan_id -> plans.plan_id has 0 orphans."
+    },
+    {
+      "check_name": "fk_invoices_subscription_id_to_subscriptions_subscription_id",
+      "category": "foreign_key",
+      "passed": true,
+      "details": {
+        "child_table": "invoices",
+        "child_column": "subscription_id",
+        "parent_table": "subscriptions",
+        "parent_column": "subscription_id",
+        "orphan_count": 0,
+        "orphan_samples": []
+      },
+      "message": "FK relationship invoices.subscription_id -> subscriptions.subscription_id has 0 orphans."
+    },
+    {
+      "check_name": "fk_payments_invoice_id_to_invoices_invoice_id",
+      "category": "foreign_key",
+      "passed": true,
+      "details": {
+        "child_table": "payments",
+        "child_column": "invoice_id",
+        "parent_table": "invoices",
+        "parent_column": "invoice_id",
+        "orphan_count": 0,
+        "orphan_samples": []
+      },
+      "message": "FK relationship payments.invoice_id -> invoices.invoice_id has 0 orphans."
+    },
+    {
+      "check_name": "missing_values_audit",
+      "category": "missing_values",
+      "passed": true,
+      "details": {
+        "plans": {
+          "plan_id": 0,
+          "plan_name": 0,
+          "monthly_price": 0,
+          "included_seats": 0
+        },
+        "accounts": {
+          "account_id": 0,
+          "created_at": 1,
+          "region": 479,
+          "segment": 0,
+          "acquisition_channel": 0
+        },
+        "subscriptions": {
+          "subscription_id": 0,
+          "account_id": 0,
+          "plan_id": 0,
+          "started_at": 1,
+          "ended_at": 1590,
+          "status": 0,
+          "seats": 0,
+          "mrr": 0
+        },
+        "invoices": {
+          "invoice_id": 0,
+          "subscription_id": 0,
+          "invoice_date": 1,
+          "due_date": 0,
+          "amount_due": 0,
+          "invoice_status": 0
+        },
+        "payments": {
+          "payment_id": 0,
+          "invoice_id": 0,
+          "attempted_at": 1,
+          "payment_status": 0,
+          "amount": 0
+        }
+      },
+      "message": "Missing value audit completed. Primary keys have 0 nulls."
+    },
+    {
+      "check_name": "categorical_domain_accounts_region",
+      "category": "categoricals",
+      "passed": true,
+      "details": {
+        "table": "accounts",
+        "column": "region",
+        "allowed_values": [
+          "APAC",
+          "EMEA",
+          "LATAM",
+          "NA"
+        ],
+        "actual_values": [
+          "APAC",
+          "EMEA",
+          "LATAM"
+        ],
+        "unexpected_values": []
+      },
+      "message": "Categorical 'region' in 'accounts' contains only valid allowed domain values: True."
+    },
+    {
+      "check_name": "categorical_domain_accounts_segment",
+      "category": "categoricals",
+      "passed": true,
+      "details": {
+        "table": "accounts",
+        "column": "segment",
+        "allowed_values": [
+          "SMB",
+          "enterprise",
+          "mid_market"
+        ],
+        "actual_values": [
+          "SMB",
+          "enterprise",
+          "mid_market"
+        ],
+        "unexpected_values": []
+      },
+      "message": "Categorical 'segment' in 'accounts' contains only valid allowed domain values: True."
+    },
+    {
+      "check_name": "categorical_domain_accounts_acquisition_channel",
+      "category": "categoricals",
+      "passed": true,
+      "details": {
+        "table": "accounts",
+        "column": "acquisition_channel",
+        "allowed_values": [
+          "organic",
+          "outbound",
+          "paid_search",
+          "partner",
+          "referral"
+        ],
+        "actual_values": [
+          "organic",
+          "outbound",
+          "paid_search",
+          "partner",
+          "referral"
+        ],
+        "unexpected_values": []
+      },
+      "message": "Categorical 'acquisition_channel' in 'accounts' contains only valid allowed domain values: True."
+    },
+    {
+      "check_name": "categorical_domain_subscriptions_status",
+      "category": "categoricals",
+      "passed": true,
+      "details": {
+        "table": "subscriptions",
+        "column": "status",
+        "allowed_values": [
+          "active",
+          "cancelled"
+        ],
+        "actual_values": [
+          "active",
+          "cancelled"
+        ],
+        "unexpected_values": []
+      },
+      "message": "Categorical 'status' in 'subscriptions' contains only valid allowed domain values: True."
+    },
+    {
+      "check_name": "categorical_domain_subscriptions_plan_id",
+      "category": "categoricals",
+      "passed": true,
+      "details": {
+        "table": "subscriptions",
+        "column": "plan_id",
+        "allowed_values": [
+          "PLN_ENTERPRISE",
+          "PLN_GROWTH",
+          "PLN_SCALE",
+          "PLN_STARTER"
+        ],
+        "actual_values": [
+          "PLN_ENTERPRISE",
+          "PLN_GROWTH",
+          "PLN_SCALE",
+          "PLN_STARTER"
+        ],
+        "unexpected_values": []
+      },
+      "message": "Categorical 'plan_id' in 'subscriptions' contains only valid allowed domain values: True."
+    },
+    {
+      "check_name": "categorical_domain_invoices_invoice_status",
+      "category": "categoricals",
+      "passed": true,
+      "details": {
+        "table": "invoices",
+        "column": "invoice_status",
+        "allowed_values": [
+          "open",
+          "paid",
+          "void"
+        ],
+        "actual_values": [
+          "open",
+          "paid",
+          "void"
+        ],
+        "unexpected_values": []
+      },
+      "message": "Categorical 'invoice_status' in 'invoices' contains only valid allowed domain values: True."
+    },
+    {
+      "check_name": "categorical_domain_payments_payment_status",
+      "category": "categoricals",
+      "passed": true,
+      "details": {
+        "table": "payments",
+        "column": "payment_status",
+        "allowed_values": [
+          "failed",
+          "succeeded"
+        ],
+        "actual_values": [
+          "failed",
+          "succeeded"
+        ],
+        "unexpected_values": []
+      },
+      "message": "Categorical 'payment_status' in 'payments' contains only valid allowed domain values: True."
+    },
+    {
+      "check_name": "categorical_domain_plans_plan_id",
+      "category": "categoricals",
+      "passed": true,
+      "details": {
+        "table": "plans",
+        "column": "plan_id",
+        "allowed_values": [
+          "PLN_ENTERPRISE",
+          "PLN_GROWTH",
+          "PLN_SCALE",
+          "PLN_STARTER"
+        ],
+        "actual_values": [
+          "PLN_ENTERPRISE",
+          "PLN_GROWTH",
+          "PLN_SCALE",
+          "PLN_STARTER"
+        ],
+        "unexpected_values": []
+      },
+      "message": "Categorical 'plan_id' in 'plans' contains only valid allowed domain values: True."
+    },
+    {
+      "check_name": "date_order_subscriptions_started_vs_ended",
+      "category": "date_consistency",
+      "passed": true,
+      "details": {
+        "violation_count": 0
+      },
+      "message": "subscriptions.ended_at >= subscriptions.started_at check passed: True."
+    },
+    {
+      "check_name": "date_order_account_created_vs_subscription_started",
+      "category": "date_consistency",
+      "passed": true,
+      "details": {
+        "violation_count": 0
+      },
+      "message": "subscriptions.started_at >= accounts.created_at check passed: True."
+    },
+    {
+      "check_name": "date_order_invoice_date_vs_due_date",
+      "category": "date_consistency",
+      "passed": true,
+      "details": {
+        "violation_count": 0
+      },
+      "message": "invoices.due_date >= invoices.invoice_date check passed: True."
+    },
+    {
+      "check_name": "date_order_invoice_date_vs_payment_attempted",
+      "category": "date_consistency",
+      "passed": true,
+      "details": {
+        "violation_count": 0
+      },
+      "message": "payments.attempted_at >= invoices.invoice_date check passed: True."
+    },
+    {
+      "check_name": "numeric_range_plans_monthly_price",
+      "category": "numerical_validity",
+      "passed": true,
+      "details": {
+        "table": "plans",
+        "column": "monthly_price",
+        "rule": "monthly_price >= 0",
+        "violations": 0,
+        "min": 49.0,
+        "max": 2499.0
+      },
+      "message": "Numeric rule 'monthly_price >= 0' on 'plans' passed: True."
+    },
+    {
+      "check_name": "numeric_range_plans_included_seats",
+      "category": "numerical_validity",
+      "passed": true,
+      "details": {
+        "table": "plans",
+        "column": "included_seats",
+        "rule": "included_seats > 0",
+        "violations": 0,
+        "min": 5.0,
+        "max": 500.0
+      },
+      "message": "Numeric rule 'included_seats > 0' on 'plans' passed: True."
+    },
+    {
+      "check_name": "numeric_range_subscriptions_seats",
+      "category": "numerical_validity",
+      "passed": true,
+      "details": {
+        "table": "subscriptions",
+        "column": "seats",
+        "rule": "seats > 0",
+        "violations": 0,
+        "min": 1.0,
+        "max": 524.0
+      },
+      "message": "Numeric rule 'seats > 0' on 'subscriptions' passed: True."
+    },
+    {
+      "check_name": "numeric_range_subscriptions_mrr",
+      "category": "numerical_validity",
+      "passed": true,
+      "details": {
+        "table": "subscriptions",
+        "column": "mrr",
+        "rule": "mrr >= 0",
+        "violations": 0,
+        "min": 49.0,
+        "max": 2595.0
+      },
+      "message": "Numeric rule 'mrr >= 0' on 'subscriptions' passed: True."
+    },
+    {
+      "check_name": "numeric_range_invoices_amount_due",
+      "category": "numerical_validity",
+      "passed": true,
+      "details": {
+        "table": "invoices",
+        "column": "amount_due",
+        "rule": "amount_due >= 0",
+        "violations": 0,
+        "min": 49.0,
+        "max": 2583.0
+      },
+      "message": "Numeric rule 'amount_due >= 0' on 'invoices' passed: True."
+    },
+    {
+      "check_name": "numeric_range_payments_amount",
+      "category": "numerical_validity",
+      "passed": true,
+      "details": {
+        "table": "payments",
+        "column": "amount",
+        "rule": "amount >= 0",
+        "violations": 0,
+        "min": 49.0,
+        "max": 2583.0
+      },
+      "message": "Numeric rule 'amount >= 0' on 'payments' passed: True."
+    },
+    {
+      "check_name": "cross_table_coverage_and_cardinality",
+      "category": "coverage",
+      "passed": true,
+      "details": {
+        "total_accounts": 2000,
+        "total_subscriptions": 2000,
+        "accounts_with_subscription": 2000,
+        "account_subscription_is_1_to_1": true,
+        "subscriptions_with_invoices": 120,
+        "subscription_invoice_coverage_pct": 6.0,
+        "total_invoices": 2000,
+        "invoices_with_payments": 1815,
+        "invoice_payment_coverage_pct": 90.75,
+        "coverage_cohort_matches_first_120_subs": true
+      },
+      "message": "Cross-table coverage analyzed: 1:1 account-subscription mapping confirmed; 120 subscriptions covered by invoices."
+    }
+  ]
+}

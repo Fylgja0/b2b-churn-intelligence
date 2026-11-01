@@ -1,0 +1,148 @@
+{
+  "total_accounts": 2000,
+  "total_subscriptions": 2000,
+  "active_subscriptions": 1590,
+  "churned_subscriptions": 410,
+  "overall_churn_rate_pct": 20.5,
+  "plan_metrics": {
+    "Enterprise": {
+      "total": 104,
+      "churned": 26,
+      "churn_rate": 25.0
+    },
+    "Growth": {
+      "total": 669,
+      "churned": 138,
+      "churn_rate": 20.62780269058296
+    },
+    "Scale": {
+      "total": 272,
+      "churned": 52,
+      "churn_rate": 19.11764705882353
+    },
+    "Starter": {
+      "total": 955,
+      "churned": 194,
+      "churn_rate": 20.31413612565445
+    }
+  },
+  "segment_metrics": {
+    "SMB": {
+      "total": 1407,
+      "churned": 303,
+      "churn_rate": 21.535181236673772
+    },
+    "enterprise": {
+      "total": 121,
+      "churned": 26,
+      "churn_rate": 21.487603305785125
+    },
+    "mid_market": {
+      "total": 472,
+      "churned": 81,
+      "churn_rate": 17.16101694915254
+    }
+  },
+  "region_metrics": {
+    "APAC": {
+      "total": 500,
+      "churned": 108,
+      "churn_rate": 21.6
+    },
+    "EMEA": {
+      "total": 520,
+      "churned": 99,
+      "churn_rate": 19.038461538461537
+    },
+    "LATAM": {
+      "total": 501,
+      "churned": 102,
+      "churn_rate": 20.35928143712575
+    },
+    "Missing": {
+      "total": 479,
+      "churned": 101,
+      "churn_rate": 21.08559498956159
+    }
+  },
+  "channel_metrics": {
+    "organic": {
+      "total": 385,
+      "churned": 87,
+      "churn_rate": 22.597402597402596
+    },
+    "outbound": {
+      "total": 389,
+      "churned": 87,
+      "churn_rate": 22.36503856041131
+    },
+    "paid_search": {
+      "total": 404,
+      "churned": 86,
+      "churn_rate": 21.287128712871286
+    },
+    "partner": {
+      "total": 400,
+      "churned": 72,
+      "churn_rate": 18.0
+    },
+    "referral": {
+      "total": 422,
+      "churned": 78,
+      "churn_rate": 18.48341232227488
+    }
+  },
+  "mrr_by_status": {
+    "active": {
+      "count": 1590.0,
+      "mean": 332.08427672955975,
+      "std": 557.3481865712035,
+      "min": 49.0,
+      "25%": 49.0,
+      "50%": 199.0,
+      "75%": 223.0,
+      "max": 2595.0
+    },
+    "cancelled": {
+      "count": 410.0,
+      "mean": 357.89756097560974,
+      "std": 610.8616818646957,
+      "min": 49.0,
+      "25%": 49.0,
+      "50%": 199.0,
+      "75%": 215.0,
+      "max": 2499.0
+    }
+  },
+  "tenure_by_status": {
+    "active": {
+      "count": 1589.0,
+      "mean": 537.4046570169918,
+      "std": 289.3353179270741,
+      "min": 67.0,
+      "25%": 283.0,
+      "50%": 506.0,
+      "75%": 781.0,
+      "max": 1088.0
+    },
+    "cancelled": {
+      "count": 410.0,
+      "mean": 355.18048780487806,
+      "std": 174.1546164337579,
+      "min": 90.0,
+      "25%": 194.0,
+      "50%": 344.5,
+      "75%": 494.5,
+      "max": 718.0
+    }
+  },
+  "billing_cohort_metrics": {
+    "total_invoiced_subs": 120,
+    "subs_with_payment_failures": 86,
+    "subs_without_payment_failures": 34,
+    "churn_rate_with_failure": 18.6046511627907,
+    "churn_rate_without_failure": 23.52941176470588,
+    "total_invoices_in_table": 2000,
+    "total_payments_in_table": 2000
+  }
+}

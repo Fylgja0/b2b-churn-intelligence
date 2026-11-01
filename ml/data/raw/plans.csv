@@ -1,0 +1,6 @@
+plan_id,plan_name,monthly_price,included_seats
+PLN_STARTER,Starter,49.00,5
+PLN_GROWTH,Growth,199.00,20
+PLN_SCALE,Scale,799.00,100
+PLN_ENTERPRISE,Enterprise,2499.00,500
+PLN_STARTER,Starter,49.00,5

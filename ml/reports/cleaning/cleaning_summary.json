@@ -1,0 +1,138 @@
+{
+  "plans": {
+    "table_name": "plans",
+    "raw_rows": 5,
+    "clean_rows": 4,
+    "duplicates_removed": 1,
+    "pk_is_unique": true,
+    "null_counts_before": {
+      "plan_id": 0,
+      "plan_name": 0,
+      "monthly_price": 0,
+      "included_seats": 0
+    },
+    "null_counts_after": {
+      "plan_id": 0,
+      "plan_name": 0,
+      "monthly_price": 0,
+      "included_seats": 0
+    },
+    "whitespace_fixed_count": 0,
+    "casing_standardized_count": 0,
+    "non_iso_dates_fixed": 0,
+    "unparseable_dates_count": 0,
+    "unparseable_date_details": []
+  },
+  "accounts": {
+    "table_name": "accounts",
+    "raw_rows": 2001,
+    "clean_rows": 2000,
+    "duplicates_removed": 1,
+    "pk_is_unique": true,
+    "null_counts_before": {
+      "account_id": 0,
+      "created_at": 1,
+      "region": 479,
+      "segment": 0,
+      "acquisition_channel": 0
+    },
+    "null_counts_after": {
+      "account_id": 0,
+      "created_at": 1,
+      "region": 479,
+      "segment": 0,
+      "acquisition_channel": 0
+    },
+    "whitespace_fixed_count": 1,
+    "casing_standardized_count": 0,
+    "non_iso_dates_fixed": 1,
+    "unparseable_dates_count": 0,
+    "unparseable_date_details": []
+  },
+  "subscriptions": {
+    "table_name": "subscriptions",
+    "raw_rows": 2001,
+    "clean_rows": 2000,
+    "duplicates_removed": 1,
+    "pk_is_unique": true,
+    "null_counts_before": {
+      "subscription_id": 0,
+      "account_id": 0,
+      "plan_id": 0,
+      "started_at": 1,
+      "ended_at": 1591,
+      "status": 0,
+      "seats": 0,
+      "mrr": 0
+    },
+    "null_counts_after": {
+      "subscription_id": 0,
+      "account_id": 0,
+      "plan_id": 0,
+      "started_at": 1,
+      "ended_at": 1590,
+      "status": 0,
+      "seats": 0,
+      "mrr": 0
+    },
+    "whitespace_fixed_count": 1,
+    "casing_standardized_count": 1,
+    "non_iso_dates_fixed": 1,
+    "unparseable_dates_count": 0,
+    "unparseable_date_details": []
+  },
+  "invoices": {
+    "table_name": "invoices",
+    "raw_rows": 2001,
+    "clean_rows": 2000,
+    "duplicates_removed": 1,
+    "pk_is_unique": true,
+    "null_counts_before": {
+      "invoice_id": 0,
+      "subscription_id": 0,
+      "invoice_date": 1,
+      "due_date": 0,
+      "amount_due": 0,
+      "invoice_status": 0
+    },
+    "null_counts_after": {
+      "invoice_id": 0,
+      "subscription_id": 0,
+      "invoice_date": 1,
+      "due_date": 0,
+      "amount_due": 0,
+      "invoice_status": 0
+    },
+    "whitespace_fixed_count": 1,
+    "casing_standardized_count": 1,
+    "non_iso_dates_fixed": 1,
+    "unparseable_dates_count": 0,
+    "unparseable_date_details": []
+  },
+  "payments": {
+    "table_name": "payments",
+    "raw_rows": 2001,
+    "clean_rows": 2000,
+    "duplicates_removed": 1,
+    "pk_is_unique": true,
+    "null_counts_before": {
+      "payment_id": 0,
+      "invoice_id": 0,
+      "attempted_at": 1,
+      "payment_status": 0,
+      "amount": 0
+    },
+    "null_counts_after": {
+      "payment_id": 0,
+      "invoice_id": 0,
+      "attempted_at": 1,
+      "payment_status": 0,
+      "amount": 0
+    },
+    "whitespace_fixed_count": 1,
+    "casing_standardized_count": 1,
+    "non_iso_dates_fixed": 1,
+    "unparseable_dates_count": 0,
+    "unparseable_date_details": []
+  }
+}

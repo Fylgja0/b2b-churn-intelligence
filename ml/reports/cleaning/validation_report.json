@@ -1,7 +1,7 @@
 {
   "all_passed": true,
-  "total_checks": 30,
-  "passed_checks": 30,
+  "total_checks": 38,
+  "passed_checks": 38,
   "failed_checks": 0,
   "checks": [
     {
@@ -111,10 +111,13 @@
         "child_column": "account_id",
         "parent_table": "accounts",
         "parent_column": "account_id",
-        "orphan_count": 0,
-        "orphan_samples": []
+        "null_count": 0,
+        "unmatched_key_count": 0,
+        "unmatched_rows_count": 0,
+        "unmatched_samples": [],
+        "sample_problems": []
       },
-      "message": "FK relationship subscriptions.account_id -> accounts.account_id has 0 orphans."
+      "message": "FK relationship subscriptions.account_id -> accounts.account_id passed (0 nulls, 0 orphans)."
     },
     {
       "check_name": "fk_subscriptions_plan_id_to_plans_plan_id",
@@ -125,10 +128,13 @@
         "child_column": "plan_id",
         "parent_table": "plans",
         "parent_column": "plan_id",
-        "orphan_count": 0,
-        "orphan_samples": []
+        "null_count": 0,
+        "unmatched_key_count": 0,
+        "unmatched_rows_count": 0,
+        "unmatched_samples": [],
+        "sample_problems": []
       },
-      "message": "FK relationship subscriptions.plan_id -> plans.plan_id has 0 orphans."
+      "message": "FK relationship subscriptions.plan_id -> plans.plan_id passed (0 nulls, 0 orphans)."
     },
     {
       "check_name": "fk_invoices_subscription_id_to_subscriptions_subscription_id",
@@ -139,10 +145,13 @@
         "child_column": "subscription_id",
         "parent_table": "subscriptions",
         "parent_column": "subscription_id",
-        "orphan_count": 0,
-        "orphan_samples": []
+        "null_count": 0,
+        "unmatched_key_count": 0,
+        "unmatched_rows_count": 0,
+        "unmatched_samples": [],
+        "sample_problems": []
       },
-      "message": "FK relationship invoices.subscription_id -> subscriptions.subscription_id has 0 orphans."
+      "message": "FK relationship invoices.subscription_id -> subscriptions.subscription_id passed (0 nulls, 0 orphans)."
     },
     {
       "check_name": "fk_payments_invoice_id_to_invoices_invoice_id",
@@ -153,10 +162,13 @@
         "child_column": "invoice_id",
         "parent_table": "invoices",
         "parent_column": "invoice_id",
-        "orphan_count": 0,
-        "orphan_samples": []
+        "null_count": 0,
+        "unmatched_key_count": 0,
+        "unmatched_rows_count": 0,
+        "unmatched_samples": [],
+        "sample_problems": []
       },
-      "message": "FK relationship payments.invoice_id -> invoices.invoice_id has 0 orphans."
+      "message": "FK relationship payments.invoice_id -> invoices.invoice_id passed (0 nulls, 0 orphans)."
     },
     {
       "check_name": "missing_values_audit",
@@ -378,40 +390,134 @@
       "message": "Categorical 'plan_id' in 'plans' contains only valid allowed domain values: True."
     },
     {
+      "check_name": "date_conversion_accounts_created_at",
+      "category": "date_conversion",
+      "passed": true,
+      "details": {
+        "table": "accounts",
+        "column": "created_at",
+        "total_rows": 2000,
+        "originally_missing_count": 1,
+        "unparseable_failed_count": 0,
+        "successfully_converted_count": 1999,
+        "sample_unparseable": []
+      },
+      "message": "Date conversion check on 'accounts.created_at' PASSED: 1999 converted, 1 originally missing preserved, 0 unparseable errors."
+    },
+    {
+      "check_name": "date_conversion_subscriptions_started_at",
+      "category": "date_conversion",
+      "passed": true,
+      "details": {
+        "table": "subscriptions",
+        "column": "started_at",
+        "total_rows": 2000,
+        "originally_missing_count": 1,
+        "unparseable_failed_count": 0,
+        "successfully_converted_count": 1999,
+        "sample_unparseable": []
+      },
+      "message": "Date conversion check on 'subscriptions.started_at' PASSED: 1999 converted, 1 originally missing preserved, 0 unparseable errors."
+    },
+    {
+      "check_name": "date_conversion_subscriptions_ended_at",
+      "category": "date_conversion",
+      "passed": true,
+      "details": {
+        "table": "subscriptions",
+        "column": "ended_at",
+        "total_rows": 2000,
+        "originally_missing_count": 1590,
+        "unparseable_failed_count": 0,
+        "successfully_converted_count": 410,
+        "sample_unparseable": []
+      },
+      "message": "Date conversion check on 'subscriptions.ended_at' PASSED: 410 converted, 1590 originally missing preserved, 0 unparseable errors."
+    },
+    {
+      "check_name": "date_conversion_invoices_invoice_date",
+      "category": "date_conversion",
+      "passed": true,
+      "details": {
+        "table": "invoices",
+        "column": "invoice_date",
+        "total_rows": 2000,
+        "originally_missing_count": 1,
+        "unparseable_failed_count": 0,
+        "successfully_converted_count": 1999,
+        "sample_unparseable": []
+      },
+      "message": "Date conversion check on 'invoices.invoice_date' PASSED: 1999 converted, 1 originally missing preserved, 0 unparseable errors."
+    },
+    {
+      "check_name": "date_conversion_invoices_due_date",
+      "category": "date_conversion",
+      "passed": true,
+      "details": {
+        "table": "invoices",
+        "column": "due_date",
+        "total_rows": 2000,
+        "originally_missing_count": 0,
+        "unparseable_failed_count": 0,
+        "successfully_converted_count": 2000,
+        "sample_unparseable": []
+      },
+      "message": "Date conversion check on 'invoices.due_date' PASSED: 2000 converted, 0 originally missing preserved, 0 unparseable errors."
+    },
+    {
+      "check_name": "date_conversion_payments_attempted_at",
+      "category": "date_conversion",
+      "passed": true,
+      "details": {
+        "table": "payments",
+        "column": "attempted_at",
+        "total_rows": 2000,
+        "originally_missing_count": 1,
+        "unparseable_failed_count": 0,
+        "successfully_converted_count": 1999,
+        "sample_unparseable": []
+      },
+      "message": "Date conversion check on 'payments.attempted_at' PASSED: 1999 converted, 1 originally missing preserved, 0 unparseable errors."
+    },
+    {
       "check_name": "date_order_subscriptions_started_vs_ended",
       "category": "date_consistency",
       "passed": true,
       "details": {
-        "violation_count": 0
+        "violation_count": 0,
+        "violation_samples": []
       },
-      "message": "subscriptions.ended_at >= subscriptions.started_at check passed: True."
+      "message": "subscriptions.ended_at >= subscriptions.started_at check passed."
     },
     {
       "check_name": "date_order_account_created_vs_subscription_started",
       "category": "date_consistency",
       "passed": true,
       "details": {
-        "violation_count": 0
+        "violation_count": 0,
+        "violation_samples": []
       },
-      "message": "subscriptions.started_at >= accounts.created_at check passed: True."
+      "message": "subscriptions.started_at >= accounts.created_at check passed."
     },
     {
       "check_name": "date_order_invoice_date_vs_due_date",
       "category": "date_consistency",
       "passed": true,
       "details": {
-        "violation_count": 0
+        "violation_count": 0,
+        "violation_samples": []
       },
-      "message": "invoices.due_date >= invoices.invoice_date check passed: True."
+      "message": "invoices.due_date >= invoices.invoice_date check passed."
     },
     {
       "check_name": "date_order_invoice_date_vs_payment_attempted",
       "category": "date_consistency",
       "passed": true,
       "details": {
-        "violation_count": 0
+        "violation_count": 0,
+        "violation_samples": []
       },
-      "message": "payments.attempted_at >= invoices.invoice_date check passed: True."
+      "message": "payments.attempted_at >= invoices.invoice_date check passed."
     },
     {
       "check_name": "numeric_range_plans_monthly_price",
@@ -498,22 +604,52 @@
       "message": "Numeric rule 'amount >= 0' on 'payments' passed: True."
     },
     {
-      "check_name": "cross_table_coverage_and_cardinality",
+      "check_name": "coverage_account_subscription_1to1",
       "category": "coverage",
       "passed": true,
       "details": {
-        "total_accounts": 2000,
-        "total_subscriptions": 2000,
-        "accounts_with_subscription": 2000,
-        "account_subscription_is_1_to_1": true,
-        "subscriptions_with_invoices": 120,
-        "subscription_invoice_coverage_pct": 6.0,
+        "expected_relation": "1:1 mapping (exact one subscription per account)",
+        "expected_accounts_count": 2000,
+        "expected_subscriptions_count": 2000,
+        "actual_accounts_count": 2000,
+        "actual_unique_accounts": 2000,
+        "actual_subscriptions_count": 2000,
+        "actual_unique_subscriptions": 2000,
+        "actual_unique_accounts_in_subs": 2000,
+        "mismatch_count": 0
+      },
+      "message": "Account-Subscription 1:1 relationship confirmed (2,000 accounts = 2,000 subscriptions)."
+    },
+    {
+      "check_name": "coverage_invoice_cohort_match",
+      "category": "coverage",
+      "passed": true,
+      "details": {
+        "expected_cohort_count": 120,
+        "expected_cohort_range": "S000001 - S000120",
+        "actual_invoiced_subs_count": 120,
+        "unexpected_invoiced_subs_count": 0,
+        "missing_expected_subs_count": 0,
+        "unexpected_samples": [],
+        "missing_samples": [],
+        "mismatch_count": 0
+      },
+      "message": "Invoice cohort matches expected 120 subscriptions (S000001 - S000120, 6.0% coverage)."
+    },
+    {
+      "check_name": "coverage_payments_and_invoices",
+      "category": "coverage",
+      "passed": true,
+      "details": {
+        "expected_paid_subscriptions_count": 118,
+        "actual_paid_subscriptions_count": 118,
+        "paid_subs_subset_of_invoiced_cohort": true,
         "total_invoices": 2000,
         "invoices_with_payments": 1815,
-        "invoice_payment_coverage_pct": 90.75,
-        "coverage_cohort_matches_first_120_subs": true
+        "orphan_payment_invoices_count": 0,
+        "orphan_payment_invoices_samples": []
       },
-      "message": "Cross-table coverage analyzed: 1:1 account-subscription mapping confirmed; 120 subscriptions covered by invoices."
+      "message": "Payments coverage verified: 118 subscriptions with payments across 1815 invoices, 0 orphan invoice references."
     }
   ]
 }

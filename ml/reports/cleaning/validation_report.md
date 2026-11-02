@@ -2,8 +2,8 @@
 
 ## 1. Doğrulama Özeti
 
-- **Toplam Kontrol Sayısı**: 30
-- **Başarılı Kontroller**: 30 ✅
+- **Toplam Kontrol Sayısı**: 38
+- **Başarılı Kontroller**: 38 ✅
 - **Başarısız Kontroller**: 0 ❌
 - **Genel Bütünlük Durumu**: BAŞARILI
 
@@ -17,10 +17,10 @@
 | primary_key | `pk_uniqueness_subscriptions` | ✅ Geçti | Primary key 'subscription_id' in 'subscriptions' is unique and non-null: True. |
 | primary_key | `pk_uniqueness_invoices` | ✅ Geçti | Primary key 'invoice_id' in 'invoices' is unique and non-null: True. |
 | primary_key | `pk_uniqueness_payments` | ✅ Geçti | Primary key 'payment_id' in 'payments' is unique and non-null: True. |
-| foreign_key | `fk_subscriptions_account_id_to_accounts_account_id` | ✅ Geçti | FK relationship subscriptions.account_id -> accounts.account_id has 0 orphans. |
-| foreign_key | `fk_subscriptions_plan_id_to_plans_plan_id` | ✅ Geçti | FK relationship subscriptions.plan_id -> plans.plan_id has 0 orphans. |
-| foreign_key | `fk_invoices_subscription_id_to_subscriptions_subscription_id` | ✅ Geçti | FK relationship invoices.subscription_id -> subscriptions.subscription_id has 0 orphans. |
-| foreign_key | `fk_payments_invoice_id_to_invoices_invoice_id` | ✅ Geçti | FK relationship payments.invoice_id -> invoices.invoice_id has 0 orphans. |
+| foreign_key | `fk_subscriptions_account_id_to_accounts_account_id` | ✅ Geçti | FK relationship subscriptions.account_id -> accounts.account_id passed (0 nulls, 0 orphans). |
+| foreign_key | `fk_subscriptions_plan_id_to_plans_plan_id` | ✅ Geçti | FK relationship subscriptions.plan_id -> plans.plan_id passed (0 nulls, 0 orphans). |
+| foreign_key | `fk_invoices_subscription_id_to_subscriptions_subscription_id` | ✅ Geçti | FK relationship invoices.subscription_id -> subscriptions.subscription_id passed (0 nulls, 0 orphans). |
+| foreign_key | `fk_payments_invoice_id_to_invoices_invoice_id` | ✅ Geçti | FK relationship payments.invoice_id -> invoices.invoice_id passed (0 nulls, 0 orphans). |
 | missing_values | `missing_values_audit` | ✅ Geçti | Missing value audit completed. Primary keys have 0 nulls. |
 | categoricals | `categorical_domain_accounts_region` | ✅ Geçti | Categorical 'region' in 'accounts' contains only valid allowed domain values: True. |
 | categoricals | `categorical_domain_accounts_segment` | ✅ Geçti | Categorical 'segment' in 'accounts' contains only valid allowed domain values: True. |
@@ -30,31 +30,49 @@
 | categoricals | `categorical_domain_invoices_invoice_status` | ✅ Geçti | Categorical 'invoice_status' in 'invoices' contains only valid allowed domain values: True. |
 | categoricals | `categorical_domain_payments_payment_status` | ✅ Geçti | Categorical 'payment_status' in 'payments' contains only valid allowed domain values: True. |
 | categoricals | `categorical_domain_plans_plan_id` | ✅ Geçti | Categorical 'plan_id' in 'plans' contains only valid allowed domain values: True. |
-| date_consistency | `date_order_subscriptions_started_vs_ended` | ✅ Geçti | subscriptions.ended_at >= subscriptions.started_at check passed: True. |
-| date_consistency | `date_order_account_created_vs_subscription_started` | ✅ Geçti | subscriptions.started_at >= accounts.created_at check passed: True. |
-| date_consistency | `date_order_invoice_date_vs_due_date` | ✅ Geçti | invoices.due_date >= invoices.invoice_date check passed: True. |
-| date_consistency | `date_order_invoice_date_vs_payment_attempted` | ✅ Geçti | payments.attempted_at >= invoices.invoice_date check passed: True. |
+| date_conversion | `date_conversion_accounts_created_at` | ✅ Geçti | Date conversion check on 'accounts.created_at' PASSED: 1999 converted, 1 originally missing preserved, 0 unparseable errors. |
+| date_conversion | `date_conversion_subscriptions_started_at` | ✅ Geçti | Date conversion check on 'subscriptions.started_at' PASSED: 1999 converted, 1 originally missing preserved, 0 unparseable errors. |
+| date_conversion | `date_conversion_subscriptions_ended_at` | ✅ Geçti | Date conversion check on 'subscriptions.ended_at' PASSED: 410 converted, 1590 originally missing preserved, 0 unparseable errors. |
+| date_conversion | `date_conversion_invoices_invoice_date` | ✅ Geçti | Date conversion check on 'invoices.invoice_date' PASSED: 1999 converted, 1 originally missing preserved, 0 unparseable errors. |
+| date_conversion | `date_conversion_invoices_due_date` | ✅ Geçti | Date conversion check on 'invoices.due_date' PASSED: 2000 converted, 0 originally missing preserved, 0 unparseable errors. |
+| date_conversion | `date_conversion_payments_attempted_at` | ✅ Geçti | Date conversion check on 'payments.attempted_at' PASSED: 1999 converted, 1 originally missing preserved, 0 unparseable errors. |
+| date_consistency | `date_order_subscriptions_started_vs_ended` | ✅ Geçti | subscriptions.ended_at >= subscriptions.started_at check passed. |
+| date_consistency | `date_order_account_created_vs_subscription_started` | ✅ Geçti | subscriptions.started_at >= accounts.created_at check passed. |
+| date_consistency | `date_order_invoice_date_vs_due_date` | ✅ Geçti | invoices.due_date >= invoices.invoice_date check passed. |
+| date_consistency | `date_order_invoice_date_vs_payment_attempted` | ✅ Geçti | payments.attempted_at >= invoices.invoice_date check passed. |
 | numerical_validity | `numeric_range_plans_monthly_price` | ✅ Geçti | Numeric rule 'monthly_price >= 0' on 'plans' passed: True. |
 | numerical_validity | `numeric_range_plans_included_seats` | ✅ Geçti | Numeric rule 'included_seats > 0' on 'plans' passed: True. |
 | numerical_validity | `numeric_range_subscriptions_seats` | ✅ Geçti | Numeric rule 'seats > 0' on 'subscriptions' passed: True. |
 | numerical_validity | `numeric_range_subscriptions_mrr` | ✅ Geçti | Numeric rule 'mrr >= 0' on 'subscriptions' passed: True. |
 | numerical_validity | `numeric_range_invoices_amount_due` | ✅ Geçti | Numeric rule 'amount_due >= 0' on 'invoices' passed: True. |
 | numerical_validity | `numeric_range_payments_amount` | ✅ Geçti | Numeric rule 'amount >= 0' on 'payments' passed: True. |
-| coverage | `cross_table_coverage_and_cardinality` | ✅ Geçti | Cross-table coverage analyzed: 1:1 account-subscription mapping confirmed; 120 subscriptions covered by invoices. |
+| coverage | `coverage_account_subscription_1to1` | ✅ Geçti | Account-Subscription 1:1 relationship confirmed (2,000 accounts = 2,000 subscriptions). |
+| coverage | `coverage_invoice_cohort_match` | ✅ Geçti | Invoice cohort matches expected 120 subscriptions (S000001 - S000120, 6.0% coverage). |
+| coverage | `coverage_payments_and_invoices` | ✅ Geçti | Payments coverage verified: 118 subscriptions with payments across 1815 invoices, 0 orphan invoice references. |
 
 ## 3. İlişkisel Bütünlük (Foreign Keys)
 
-- `subscriptions.account_id` → `accounts.account_id`: %100 eşleşme (0 yetim kayıt)
-- `subscriptions.plan_id` → `plans.plan_id`: %100 eşleşme (0 yetim kayıt)
-- `invoices.subscription_id` → `subscriptions.subscription_id`: %100 eşleşme (0 yetim kayıt)
-- `payments.invoice_id` → `invoices.invoice_id`: %100 eşleşme (0 yetim kayıt)
+- `subscriptions.account_id` → `accounts.account_id`: 0 NULL, 0 yetim kayıt (%100 geçerli)
+- `subscriptions.plan_id` → `plans.plan_id`: 0 NULL, 0 yetim kayıt (%100 geçerli)
+- `invoices.subscription_id` → `subscriptions.subscription_id`: 0 NULL, 0 yetim kayıt (%100 geçerli)
+- `payments.invoice_id` → `invoices.invoice_id`: 0 NULL, 0 yetim kayıt (%100 geçerli)
 
-## 4. Tablolar Arası Kapsam ve Tane Seviyesi (Grain)
+## 4. Tarih Dönüşüm Doğrulaması (Date Conversion Audit)
 
-- **Hesap - Abonelik İlişkisi**: 2,000 hesap ve 2,000 abonelik arasında bire bir (1:1) ilişki mevcuttur.
-- **Fatura Kapsamı**: Faturalar tablosundaki 2,000 fatura kaydı yalnızca ilk 120 abonelik (`S000001` - `S000120`) ile ilişkilidir (%6.0 kapsam).
-- **Ödeme Kapsamı**: 2,000 fatura kaydının 1,815'i için en az 1 ödeme denemesi mevcuttur (%90.75 fatura ödeme kapsamı).
+Ham veride zaten boş olan kayıtlar ile dönüşüm hatası nedeniyle `NaT` olan kayıtlar birbirinden ayrılmıştır:
+- `accounts.created_at`: 1 ham eksik korundu, 0 dönüşüm hatası, 1,999 başarıyla dönüştürüldü.
+- `subscriptions.started_at`: 1 ham eksik korundu, 0 dönüşüm hatası, 1,999 başarıyla dönüştürüldü.
+- `subscriptions.ended_at`: 1,590 aktif abonelik (doğal eksik) korundu, 0 dönüşüm hatası, 410 başarıyla dönüştürüldü.
+- `invoices.invoice_date`: 1 ham eksik korundu, 0 dönüşüm hatası, 1,999 başarıyla dönüştürüldü.
+- `invoices.due_date`: 0 ham eksik, 0 dönüşüm hatası, 2,000 başarıyla dönüştürüldü.
+- `payments.attempted_at`: 1 ham eksik korundu, 0 dönüşüm hatası, 1,999 başarıyla dönüştürüldü.
 
-## 5. Lisans Bildirimi
+## 5. Tablolar Arası Kapsam ve Tane Seviyesi (Grain)
+
+- **Hesap - Abonelik İlişkisi**: 2,000 hesap ve 2,000 abonelik arasında bire bir (1:1) ilişki mevcuttur (0 uyumsuzluk).
+- **Fatura Kohort Kapsamı**: Faturalar tablosundaki 2,000 fatura kaydı tam olarak beklenen ilk 120 abonelik (`S000001` - `S000120`) ile ilişkilidir (%6.0 kapsam, 0 uyumsuzluk).
+- **Ödeme Kapsamı**: 2,000 faturanın 1,815'i için ödeme denemesi mevcuttur; bu ödemeler 118 farklı abonelikle ilişkilidir (0 yetim fatura referansı).
+
+## 6. Lisans Bildirimi
 
 Attribution: Analytics Engineering, "SaaS Subscriptions & Customer Churn Dataset v1.0.0". https://www.analyticsengineering.com/datasets/saas-subscriptions (CC BY 4.0)

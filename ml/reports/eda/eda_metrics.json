@@ -144,5 +144,23 @@
     "churn_rate_without_failure": 23.52941176470588,
     "total_invoices_in_table": 2000,
     "total_payments_in_table": 2000
+  },
+  "region_independence_tests": {
+    "churn": {
+      "chi2_statistic": 0.1325,
+      "degrees_of_freedom": 1
+    },
+    "segment": {
+      "chi2_statistic": 0.1604,
+      "degrees_of_freedom": 2
+    },
+    "acquisition_channel": {
+      "chi2_statistic": 1.8838,
+      "degrees_of_freedom": 4
+    },
+    "plan_name": {
+      "chi2_statistic": 1.3764,
+      "degrees_of_freedom": 3
+    }
   }
 }

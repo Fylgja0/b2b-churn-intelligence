@@ -357,9 +357,9 @@ class SaasChurnEDA:
 
         fig, ax = plt.subplots(figsize=(12, 5))
         sns.lineplot(data=monthly_churn, x="ended_month", y="churn_events", ax=ax, marker="o", color="#c0392b", linewidth=2.5)
-        ax.set_title("Monthly Churn Volume Trend (2023 - 2025)")
+        ax.set_title("Monthly Churn Volume Trend (2023 - 2025) - Cancellation Count")
         ax.set_xlabel("Cancellation Month")
-        ax.set_ylabel("Churned Subscriptions Count")
+        ax.set_ylabel("Monthly Cancellations (Volume)")
         plt.xticks(rotation=45)
         for i, row in monthly_churn.iterrows():
             ax.text(i, row["churn_events"] + 0.6, str(row["churn_events"]), ha="center", fontsize=9, fontweight="bold")
@@ -488,6 +488,23 @@ class SaasChurnEDA:
             "total_payments_in_table": len(tables["payments"]) if "payments" in tables else None,
         }
 
+        # Statistical independence tests for missing region against observable features (Chi-square)
+        df_missing_test = df.copy()
+        df_missing_test["is_missing_region"] = df_missing_test["region"].isna()
+        region_independence_tests = {}
+        for col in ["churn", "segment", "acquisition_channel", "plan_name"]:
+            obs = pd.crosstab(df_missing_test["is_missing_region"], df_missing_test[col]).values
+            row_sums = obs.sum(axis=1, keepdims=True)
+            col_sums = obs.sum(axis=0, keepdims=True)
+            total = obs.sum()
+            exp = (row_sums * col_sums) / total
+            chi2 = float(np.sum((obs - exp)**2 / exp))
+            dof = int((obs.shape[0] - 1) * (obs.shape[1] - 1))
+            region_independence_tests[col] = {
+                "chi2_statistic": round(chi2, 4),
+                "degrees_of_freedom": dof,
+            }
+
         return {
             "total_accounts": total_accounts,
             "total_subscriptions": total_accounts,
@@ -501,6 +518,7 @@ class SaasChurnEDA:
             "mrr_by_status": mrr_by_status,
             "tenure_by_status": tenure_by_status,
             "billing_cohort_metrics": cohort_metrics,
+            "region_independence_tests": region_independence_tests,
         }
 
     def write_reports(self, metrics: Dict[str, Any]) -> None:
@@ -558,7 +576,14 @@ class SaasChurnEDA:
 
         md_lines.extend([
             "",
-            "> **Gözlem**: Eksik bölge bilgisine sahip 479 hesabın churn oranı (%21.09), bilinen bölgelerle (APAC: %21.60, LATAM: %20.36, EMEA: %19.04) hemen hemen aynıdır. Bu durum eksik bölge bilgisinin Churn ile doğrudan ilişkili olmadığını (MCAR yapısı sergilediğini) gösterir.",
+            "> **Gözlem ve Analitik Yorum (Eksik Veri Mekanizması)**:",
+            "> - Eksik bölge bilgisine sahip 479 hesabın churn oranı (%21.09), bilinen bölgelerle (APAC: %21.60, LATAM: %20.36, EMEA: %19.04) sayısal olarak benzerdir.",
+            "> - Gözlemlenebilir değişkenlerle eksiklik durumu arasında Ki-kare (Chi-square) bağımsızlık testleri gerçekleştirilmiştir:",
+            f">   - Churn durumu vs Eksik Bölge: $\\chi^2 = {metrics['region_independence_tests']['churn']['chi2_statistic']}$ (dof={metrics['region_independence_tests']['churn']['degrees_of_freedom']})",
+            f">   - Segment vs Eksik Bölge: $\\chi^2 = {metrics['region_independence_tests']['segment']['chi2_statistic']}$ (dof={metrics['region_independence_tests']['segment']['degrees_of_freedom']})",
+            f">   - Edinme Kanalı vs Eksik Bölge: $\\chi^2 = {metrics['region_independence_tests']['acquisition_channel']['chi2_statistic']}$ (dof={metrics['region_independence_tests']['acquisition_channel']['degrees_of_freedom']})",
+            f">   - Plan vs Eksik Bölge: $\\chi^2 = {metrics['region_independence_tests']['plan_name']['chi2_statistic']}$ (dof={metrics['region_independence_tests']['plan_name']['degrees_of_freedom']})",
+            "> - **Önemli Metodolojik Uyarı**: Yalnızca churn oranlarının benzer olması ve gözlemlenebilir değişkenlerle istatistiksel bağımlılık bulunamamış olması, eksikliğin kesin olarak **MCAR (Missing Completely At Random)** olduğunu kanıtlamaz. Gözlemlenemeyen faktörlerin (unobserved confounders) eksiklik sürecini etkileyip etkilemediği mevcut veri seti ile test edilemez. Bu nedenle eksiklik mekanizması mevcut veriler ışığında **belirsiz / kanıtlanmamış** olarak değerlendirilmeli, eksik değerler yapay varsayımlarla doldurulmamalıdır.",
             "",
             "### 2.4. Edinme Kanalı (Acquisition Channel) Bazlı Churn Analizi",
             "| Kanal | Toplam Müşteri | Churn Sayısı | Churn Oranı (%) |",
@@ -575,6 +600,11 @@ class SaasChurnEDA:
             "### 2.5. Gelir (MRR) ve Süre (Tenure) Analizi",
             "- **MRR**: Churned müşterilerin ortalama sözleşmeli MRR değeri ($357.90), aktif müşterilerin ortalamasından ($332.08) bir miktar daha yüksektir. Bunun sebebi churn eden az sayıdaki Enterprise müşterisinin ortalamayı yukarı çekmesidir. Medyan MRR her iki grupta da $199.00 seviyesindedir.",
             "- **Tenure**: Churn eden müşteriler ortalama 355 gün (medyan 344 gün) sonra ayrılmaktadır. Kayıplar özellikle 6. ve 12. aylar arasında yoğunlaşmaktadır.",
+            "- **Tenure Değişkeni ve Hedef Sızıntısı (Target Leakage) Uyarısı**:",
+            "  - Veri setindeki `tenure_days` değişkeni, iptal edilmiş aboneliklerde `ended_at - started_at`, aktif aboneliklerde ise gözlem kesim tarihi olan `2025-12-31` ile `started_at` arasındaki fark olarak hesaplanmıştır (farklı referans tarihleri kullanılmıştır).",
+            "  - Bu hesaplama tanımlayıcı keşifsel analiz (EDA) amacıyla uygundur.",
+            "  - Ancak **bir churn tahmin modelinde doğrudan girdi özniteliği olarak kullanılması durumunda Hedef Sızıntısına (Target Leakage) yol açar**; çünkü iptal tarihi (`ended_at`) gelecekte gerçekleşen hedef olayın bilgisini içerir.",
+            "  - Gelecekte makine öğrenmesi modeli eğitilmeden önce tahminin yapılacağı zaman noktası ($T_0$ / observation window) sabitlenmeli ve tenure yalnızca $T_0$ anına kadar geçen süre olarak türetilmelidir.",
             "",
             "## 3. Veri Seti Sınırlılıkları ve Kritik Fatura Analizi",
             "",
@@ -600,9 +630,12 @@ class SaasChurnEDA:
             "7. `07_tenure_distribution_by_churn.png`: Churn süresi ve müşteri kalma süresi analizi (Tenure Days).",
             "8. `08_missing_values_matrix.png`: Tablo sütunları bazında eksik değer oranları grafiği.",
             "9. `09_numeric_distributions.png`: Koltuk sayısı, MRR, liste fiyatı ve ek koltuk dağılımları.",
-            "10. `10_monthly_churn_trend.png`: 2023-2025 aylık ayrılma trendi ve mevsimsellik.",
+            "10. `10_monthly_churn_trend.png`: 2023-2025 aylık iptal hacmi (cancellation count / volume) trendi.",
             "11. `11_payment_failures_vs_churn_cohort.png`: 120 abonelik fatura kohortunda ödeme başarısızlıkları ve churn ilişkisi.",
             "12. `12_invoice_coverage_breakdown.png`: Fatura kapsamındaki %6'lık kısıt ve kohort karşılaştırması.",
+            "",
+            "> [!NOTE]",
+            "> **Aylık İptal Grafiği Notu**: `10_monthly_churn_trend.png` grafiği aylık churn oranını değil, iptal edilen abonelik sayısını (hacmini) göstermektedir. Her ay risk altındaki aktif müşteri tabanı sabit ve net tanımlanmadığından bir oran türetilmemiştir. Mevcut sentetik veride mevsimsellik veya nedensellik hakkında yeterli kanıt bulunmadığından kesin çıkarımlardan kaçınılmalıdır.",
             "",
             "## 5. Lisans ve Kaynak Gösterimi",
             "",

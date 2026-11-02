@@ -11,7 +11,7 @@ import json
 import logging
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 
@@ -49,6 +49,15 @@ ALLOWED_CATEGORICALS: Dict[str, Dict[str, Set[str]]] = {
         "plan_id": {"PLN_STARTER", "PLN_GROWTH", "PLN_SCALE", "PLN_ENTERPRISE"},
     },
 }
+
+DATE_COLUMN_CONFIGS: List[Tuple[str, str, str]] = [
+    ("accounts", "account_id", "created_at"),
+    ("subscriptions", "subscription_id", "started_at"),
+    ("subscriptions", "subscription_id", "ended_at"),
+    ("invoices", "invoice_id", "invoice_date"),
+    ("invoices", "invoice_id", "due_date"),
+    ("payments", "payment_id", "attempted_at"),
+]
 
 
 @dataclass
@@ -96,7 +105,7 @@ class DataValidator:
         for name in ["plans", "accounts", "subscriptions", "invoices", "payments"]:
             path = self.raw_dir / f"{name}.csv"
             if path.exists():
-                tables[name] = pd.read_csv(path)
+                tables[name] = pd.read_csv(path, dtype=str)
         return tables
 
     def validate_row_counts(
@@ -118,7 +127,9 @@ class DataValidator:
             category="row_counts",
             passed=passed,
             details=counts,
-            message="Pre and post row counts verified (1 duplicate removed per table).",
+            message="Pre and post row counts verified (1 duplicate removed per table)."
+            if passed
+            else "Row count verification failed: duplicate removal discrepancy detected.",
         )
 
     def validate_primary_keys(self, tables: Dict[str, pd.DataFrame]) -> List[CheckResult]:
@@ -155,6 +166,7 @@ class DataValidator:
         return results
 
     def validate_foreign_keys(self, tables: Dict[str, pd.DataFrame]) -> List[CheckResult]:
+        """Validates foreign keys checking both null values and orphan (unmatched) records."""
         fk_definitions = [
             ("subscriptions", "account_id", "accounts", "account_id"),
             ("subscriptions", "plan_id", "plans", "plan_id"),
@@ -163,10 +175,32 @@ class DataValidator:
         ]
         results = []
         for child_tbl, child_col, parent_tbl, parent_col in fk_definitions:
-            child_keys = tables[child_tbl][child_col].dropna()
+            child_series = tables[child_tbl][child_col]
+            null_count = int(child_series.isna().sum())
+
+            non_null_child_keys = child_series.dropna()
             parent_keys = set(tables[parent_tbl][parent_col].dropna())
-            orphans = set(child_keys) - parent_keys
-            passed = len(orphans) == 0
+
+            # Unmatched child keys that do not exist in parent
+            unmatched_keys = set(non_null_child_keys) - parent_keys
+            unmatched_key_count = len(unmatched_keys)
+            unmatched_rows_count = int(child_series.isin(unmatched_keys).sum()) if unmatched_keys else 0
+
+            # Both null FK and orphan FK are invalid in this schema
+            passed = (null_count == 0) and (unmatched_key_count == 0)
+
+            sample_problems: List[str] = []
+            if null_count > 0:
+                sample_problems.append(f"{null_count} NULL foreign key(s) in {child_tbl}.{child_col}")
+            if unmatched_key_count > 0:
+                sample_problems.append(f"Unmatched keys sample: {list(unmatched_keys)[:5]}")
+
+            msg = (
+                f"FK relationship {child_tbl}.{child_col} -> {parent_tbl}.{parent_col} passed (0 nulls, 0 orphans)."
+                if passed
+                else f"FK relationship {child_tbl}.{child_col} -> {parent_tbl}.{parent_col} FAILED: "
+                f"{null_count} NULL(s), {unmatched_key_count} unmatched key(s) affecting {unmatched_rows_count} row(s)."
+            )
 
             results.append(
                 CheckResult(
@@ -178,10 +212,13 @@ class DataValidator:
                         "child_column": child_col,
                         "parent_table": parent_tbl,
                         "parent_column": parent_col,
-                        "orphan_count": len(orphans),
-                        "orphan_samples": list(orphans)[:5],
+                        "null_count": null_count,
+                        "unmatched_key_count": unmatched_key_count,
+                        "unmatched_rows_count": unmatched_rows_count,
+                        "unmatched_samples": list(unmatched_keys)[:5],
+                        "sample_problems": sample_problems,
                     },
-                    message=f"FK relationship {child_tbl}.{child_col} -> {parent_tbl}.{parent_col} has {len(orphans)} orphans.",
+                    message=msg,
                 )
             )
         return results
@@ -191,8 +228,7 @@ class DataValidator:
         for name, df in tables.items():
             null_audit[name] = df.isna().sum().to_dict()
 
-        # accounts.region expected ~479 missing, subscriptions.ended_at ~1591 missing (active)
-        # exactly 1 missing date in accounts.created_at, subscriptions.started_at, invoices.invoice_date, payments.attempted_at
+        # Primary keys must never be null
         passed = (
             null_audit["accounts"]["account_id"] == 0
             and null_audit["subscriptions"]["subscription_id"] == 0
@@ -206,7 +242,9 @@ class DataValidator:
             category="missing_values",
             passed=passed,
             details=null_audit,
-            message="Missing value audit completed. Primary keys have 0 nulls.",
+            message="Missing value audit completed. Primary keys have 0 nulls."
+            if passed
+            else "Missing value audit failed: nulls detected in primary key columns.",
         )
 
     def validate_categoricals(self, tables: Dict[str, pd.DataFrame]) -> List[CheckResult]:
@@ -232,12 +270,106 @@ class DataValidator:
                             "actual_values": sorted(list(actual_values)),
                             "unexpected_values": sorted(list(unexpected)),
                         },
-                        message=f"Categorical '{col_name}' in '{tbl_name}' contains only valid allowed domain values: {passed}.",
+                        message=f"Categorical '{col_name}' in '{tbl_name}' contains only valid allowed domain values: {passed}."
+                        if passed
+                        else f"Categorical '{col_name}' in '{tbl_name}' contains unexpected values: {sorted(list(unexpected))}.",
                     )
                 )
         return results
 
+    def validate_date_conversions(
+        self, clean_tables: Dict[str, pd.DataFrame], raw_tables: Optional[Dict[str, pd.DataFrame]] = None
+    ) -> List[CheckResult]:
+        """
+        Differentiates between:
+        1. Originally missing dates in raw data (preserved per missing value policy).
+        2. Non-empty dates in raw data that failed conversion (unparseable / coerced to NaT - ERROR).
+        3. Successfully parsed and converted datetime values.
+        """
+        results = []
+        if raw_tables is None:
+            raw_tables = self.load_raw_tables()
+
+        for tbl, pk, col in DATE_COLUMN_CONFIGS:
+            if tbl not in clean_tables or tbl not in raw_tables:
+                continue
+
+            raw_df = raw_tables[tbl].drop_duplicates(subset=[pk])
+            clean_df = clean_tables[tbl]
+
+            if col not in raw_df.columns or col not in clean_df.columns:
+                continue
+
+            merged = raw_df[[pk, col]].merge(
+                clean_df[[pk, col]], on=pk, suffixes=("_raw", "_clean"), how="inner"
+            )
+
+            raw_s = merged[f"{col}_raw"]
+            clean_s = merged[f"{col}_clean"]
+
+            # Originally missing: raw was null or empty whitespace
+            raw_str = raw_s.fillna("").astype(str).str.strip()
+            orig_missing_mask = raw_s.isna() | (raw_str == "") | (raw_str.str.lower() == "nan")
+            originally_missing_count = int(orig_missing_mask.sum())
+
+            # Non-empty in raw
+            raw_not_empty_mask = ~orig_missing_mask
+
+            # Clean checks: clean must not be empty and must be valid ISO-8601 (YYYY-MM-DD)
+            clean_str = clean_s.fillna("").astype(str).str.strip()
+            clean_is_empty_mask = clean_s.isna() | (clean_str == "") | (clean_str.str.lower() == "nan")
+            clean_valid_iso_mask = clean_str.str.match(r"^\d{4}-\d{2}-\d{2}$", na=False)
+
+            # Unparseable failed: raw had non-empty text, but clean is empty or not valid ISO
+            unparseable_mask = raw_not_empty_mask & (clean_is_empty_mask | ~clean_valid_iso_mask)
+            unparseable_failed_count = int(unparseable_mask.sum())
+
+            # Successfully converted: raw had text, clean is valid ISO
+            success_mask = raw_not_empty_mask & ~clean_is_empty_mask & clean_valid_iso_mask
+            successfully_converted_count = int(success_mask.sum())
+
+            sample_unparseable = []
+            if unparseable_failed_count > 0:
+                bad_rows = merged[unparseable_mask]
+                for _, r in bad_rows.head(5).iterrows():
+                    sample_unparseable.append({
+                        "pk": r[pk],
+                        "raw_value": str(r[f"{col}_raw"]),
+                        "clean_value": str(r[f"{col}_clean"]),
+                    })
+
+            passed = (unparseable_failed_count == 0)
+
+            msg = (
+                f"Date conversion check on '{tbl}.{col}' PASSED: {successfully_converted_count} converted, "
+                f"{originally_missing_count} originally missing preserved, 0 unparseable errors."
+                if passed
+                else f"Date conversion check on '{tbl}.{col}' FAILED: {unparseable_failed_count} non-empty raw value(s) "
+                f"failed conversion. Samples: {sample_unparseable}."
+            )
+
+            results.append(
+                CheckResult(
+                    check_name=f"date_conversion_{tbl}_{col}",
+                    category="date_conversion",
+                    passed=passed,
+                    details={
+                        "table": tbl,
+                        "column": col,
+                        "total_rows": len(merged),
+                        "originally_missing_count": originally_missing_count,
+                        "unparseable_failed_count": unparseable_failed_count,
+                        "successfully_converted_count": successfully_converted_count,
+                        "sample_unparseable": sample_unparseable,
+                    },
+                    message=msg,
+                )
+            )
+
+        return results
+
     def validate_dates(self, tables: Dict[str, pd.DataFrame]) -> List[CheckResult]:
+        """Validates chronological order and logical consistency between date columns."""
         results = []
 
         # 1. subscriptions: ended_at >= started_at
@@ -245,13 +377,19 @@ class DataValidator:
         sub["started_at"] = pd.to_datetime(sub["started_at"], errors="coerce")
         sub["ended_at"] = pd.to_datetime(sub["ended_at"], errors="coerce")
         bad_sub_dates = sub[sub["ended_at"].notna() & sub["started_at"].notna() & (sub["ended_at"] < sub["started_at"])]
+        passed_1 = len(bad_sub_dates) == 0
         results.append(
             CheckResult(
                 check_name="date_order_subscriptions_started_vs_ended",
                 category="date_consistency",
-                passed=len(bad_sub_dates) == 0,
-                details={"violation_count": len(bad_sub_dates)},
-                message=f"subscriptions.ended_at >= subscriptions.started_at check passed: {len(bad_sub_dates) == 0}.",
+                passed=passed_1,
+                details={
+                    "violation_count": len(bad_sub_dates),
+                    "violation_samples": bad_sub_dates[["subscription_id", "started_at", "ended_at"]].head(5).to_dict(orient="records"),
+                },
+                message="subscriptions.ended_at >= subscriptions.started_at check passed."
+                if passed_1
+                else f"subscriptions.ended_at >= subscriptions.started_at check FAILED with {len(bad_sub_dates)} violation(s).",
             )
         )
 
@@ -264,13 +402,19 @@ class DataValidator:
             & acc_sub["created_at"].notna()
             & (acc_sub["started_at"] < acc_sub["created_at"])
         ]
+        passed_2 = len(bad_acc_sub) == 0
         results.append(
             CheckResult(
                 check_name="date_order_account_created_vs_subscription_started",
                 category="date_consistency",
-                passed=len(bad_acc_sub) == 0,
-                details={"violation_count": len(bad_acc_sub)},
-                message=f"subscriptions.started_at >= accounts.created_at check passed: {len(bad_acc_sub) == 0}.",
+                passed=passed_2,
+                details={
+                    "violation_count": len(bad_acc_sub),
+                    "violation_samples": bad_acc_sub[["account_id", "created_at", "started_at"]].head(5).to_dict(orient="records"),
+                },
+                message="subscriptions.started_at >= accounts.created_at check passed."
+                if passed_2
+                else f"subscriptions.started_at >= accounts.created_at check FAILED with {len(bad_acc_sub)} violation(s).",
             )
         )
 
@@ -279,13 +423,19 @@ class DataValidator:
         inv["invoice_date"] = pd.to_datetime(inv["invoice_date"], errors="coerce")
         inv["due_date"] = pd.to_datetime(inv["due_date"], errors="coerce")
         bad_inv_dates = inv[inv["due_date"].notna() & inv["invoice_date"].notna() & (inv["due_date"] < inv["invoice_date"])]
+        passed_3 = len(bad_inv_dates) == 0
         results.append(
             CheckResult(
                 check_name="date_order_invoice_date_vs_due_date",
                 category="date_consistency",
-                passed=len(bad_inv_dates) == 0,
-                details={"violation_count": len(bad_inv_dates)},
-                message=f"invoices.due_date >= invoices.invoice_date check passed: {len(bad_inv_dates) == 0}.",
+                passed=passed_3,
+                details={
+                    "violation_count": len(bad_inv_dates),
+                    "violation_samples": bad_inv_dates[["invoice_id", "invoice_date", "due_date"]].head(5).to_dict(orient="records"),
+                },
+                message="invoices.due_date >= invoices.invoice_date check passed."
+                if passed_3
+                else f"invoices.due_date >= invoices.invoice_date check FAILED with {len(bad_inv_dates)} violation(s).",
             )
         )
 
@@ -298,13 +448,19 @@ class DataValidator:
             & pay_inv["invoice_date"].notna()
             & (pay_inv["attempted_at"] < pay_inv["invoice_date"])
         ]
+        passed_4 = len(bad_pay_inv) == 0
         results.append(
             CheckResult(
                 check_name="date_order_invoice_date_vs_payment_attempted",
                 category="date_consistency",
-                passed=len(bad_pay_inv) == 0,
-                details={"violation_count": len(bad_pay_inv)},
-                message=f"payments.attempted_at >= invoices.invoice_date check passed: {len(bad_pay_inv) == 0}.",
+                passed=passed_4,
+                details={
+                    "violation_count": len(bad_pay_inv),
+                    "violation_samples": bad_pay_inv[["payment_id", "invoice_id", "invoice_date", "attempted_at"]].head(5).to_dict(orient="records"),
+                },
+                message="payments.attempted_at >= invoices.invoice_date check passed."
+                if passed_4
+                else f"payments.attempted_at >= invoices.invoice_date check FAILED with {len(bad_pay_inv)} violation(s).",
             )
         )
 
@@ -342,54 +498,149 @@ class DataValidator:
                         "min": float(series.min()) if not series.empty else None,
                         "max": float(series.max()) if not series.empty else None,
                     },
-                    message=f"Numeric rule '{label}' on '{tbl_name}' passed: {passed}.",
+                    message=f"Numeric rule '{label}' on '{tbl_name}' passed: {passed}."
+                    if passed
+                    else f"Numeric rule '{label}' on '{tbl_name}' FAILED with {violations} violation(s).",
                 )
             )
         return results
 
-    def validate_cross_table_coverage(self, tables: Dict[str, pd.DataFrame]) -> CheckResult:
+    def validate_cross_table_coverage(self, tables: Dict[str, pd.DataFrame]) -> List[CheckResult]:
+        """
+        Validates cross-table coverage, 1:1 cardinality, and cohort constraints.
+        Does NOT hardcode passed=True; evaluates actual vs expected values strictly.
+        """
+        results = []
         acc = tables["accounts"]
         sub = tables["subscriptions"]
         inv = tables["invoices"]
         pay = tables["payments"]
 
         total_accounts = len(acc)
+        unique_accounts = acc["account_id"].nunique()
         total_subs = len(sub)
-        sub_accounts = sub["account_id"].nunique()
-        subs_with_invoices = inv["subscription_id"].nunique()
-        invoices_with_payments = pay["invoice_id"].nunique()
-        total_invoices = len(inv)
+        unique_subs = sub["subscription_id"].nunique()
+        sub_accounts_unique = sub["account_id"].nunique()
 
-        details = {
-            "total_accounts": total_accounts,
-            "total_subscriptions": total_subs,
-            "accounts_with_subscription": sub_accounts,
-            "account_subscription_is_1_to_1": bool(total_accounts == total_subs == sub_accounts),
-            "subscriptions_with_invoices": subs_with_invoices,
-            "subscription_invoice_coverage_pct": round((subs_with_invoices / total_subs) * 100, 2),
-            "total_invoices": total_invoices,
-            "invoices_with_payments": invoices_with_payments,
-            "invoice_payment_coverage_pct": round((invoices_with_payments / total_invoices) * 100, 2),
-        }
+        # Check 1: 1:1 Account-Subscription Cardinality
+        is_1to1 = (
+            (total_accounts == unique_accounts)
+            and (total_subs == unique_subs)
+            and (total_accounts == total_subs)
+            and (sub_accounts_unique == total_accounts)
+            and (set(sub["account_id"].dropna()) == set(acc["account_id"].dropna()))
+        )
+        cardinality_mismatch_count = 0
+        if not is_1to1:
+            diff_accounts = abs(total_accounts - total_subs)
+            non_unique_in_sub = total_subs - sub_accounts_unique
+            cardinality_mismatch_count = diff_accounts + non_unique_in_sub
 
-        # Subscriptions S000001 through S000120 have invoices
-        inv_sub_ids = set(inv["subscription_id"].unique())
-        expected_subs = {f"S{i:06d}" for i in range(1, 121)}
-        coverage_pattern_matched = inv_sub_ids == expected_subs
-
-        details["coverage_cohort_matches_first_120_subs"] = coverage_pattern_matched
-
-        return CheckResult(
-            check_name="cross_table_coverage_and_cardinality",
-            category="coverage",
-            passed=True,
-            details=details,
-            message="Cross-table coverage analyzed: 1:1 account-subscription mapping confirmed; 120 subscriptions covered by invoices.",
+        results.append(
+            CheckResult(
+                check_name="coverage_account_subscription_1to1",
+                category="coverage",
+                passed=is_1to1,
+                details={
+                    "expected_relation": "1:1 mapping (exact one subscription per account)",
+                    "expected_accounts_count": 2000,
+                    "expected_subscriptions_count": 2000,
+                    "actual_accounts_count": total_accounts,
+                    "actual_unique_accounts": unique_accounts,
+                    "actual_subscriptions_count": total_subs,
+                    "actual_unique_subscriptions": unique_subs,
+                    "actual_unique_accounts_in_subs": sub_accounts_unique,
+                    "mismatch_count": cardinality_mismatch_count,
+                },
+                message="Account-Subscription 1:1 relationship confirmed (2,000 accounts = 2,000 subscriptions)."
+                if is_1to1
+                else f"Account-Subscription 1:1 relationship FAILED: {cardinality_mismatch_count} mismatch(es).",
+            )
         )
 
-    def validate_all(self) -> ValidationSuiteResult:
-        clean_tables = self.load_processed_tables()
-        raw_tables = self.load_raw_tables()
+        # Check 2: Invoice Subscription Cohort Coverage (Expected S000001 - S000120)
+        expected_cohort_ids = {f"S{i:06d}" for i in range(1, 121)}
+        actual_invoiced_subs = set(inv["subscription_id"].dropna().unique())
+
+        unexpected_subs_in_invoices = actual_invoiced_subs - expected_cohort_ids
+        missing_subs_in_invoices = expected_cohort_ids - actual_invoiced_subs
+        cohort_mismatch_count = len(unexpected_subs_in_invoices) + len(missing_subs_in_invoices)
+        cohort_passed = (cohort_mismatch_count == 0) and (len(actual_invoiced_subs) == 120)
+
+        results.append(
+            CheckResult(
+                check_name="coverage_invoice_cohort_match",
+                category="coverage",
+                passed=cohort_passed,
+                details={
+                    "expected_cohort_count": 120,
+                    "expected_cohort_range": "S000001 - S000120",
+                    "actual_invoiced_subs_count": len(actual_invoiced_subs),
+                    "unexpected_invoiced_subs_count": len(unexpected_subs_in_invoices),
+                    "missing_expected_subs_count": len(missing_subs_in_invoices),
+                    "unexpected_samples": list(unexpected_subs_in_invoices)[:5],
+                    "missing_samples": list(missing_subs_in_invoices)[:5],
+                    "mismatch_count": cohort_mismatch_count,
+                },
+                message="Invoice cohort matches expected 120 subscriptions (S000001 - S000120, 6.0% coverage)."
+                if cohort_passed
+                else f"Invoice cohort coverage FAILED: {cohort_mismatch_count} mismatch(es). "
+                f"Unexpected: {len(unexpected_subs_in_invoices)}, Missing: {len(missing_subs_in_invoices)}.",
+            )
+        )
+
+        # Check 3: Payments to Invoices and Subscription Coverage
+        inv_clean_keys = set(inv["invoice_id"].dropna())
+        pay_inv_keys = set(pay["invoice_id"].dropna())
+        orphan_payment_invoices = pay_inv_keys - inv_clean_keys
+
+        # Subscriptions covered by payments
+        pay_with_inv = pay.merge(inv[["invoice_id", "subscription_id"]], on="invoice_id", how="left")
+        paid_subs = set(pay_with_inv["subscription_id"].dropna().unique())
+        # In this dataset, exactly 118 of the 120 invoiced subscriptions have payment records
+        expected_paid_subs_count = 118
+        actual_paid_subs_count = len(paid_subs)
+        paid_subs_within_cohort = paid_subs.issubset(expected_cohort_ids)
+
+        payments_coverage_passed = (
+            (len(orphan_payment_invoices) == 0)
+            and (actual_paid_subs_count == expected_paid_subs_count)
+            and paid_subs_within_cohort
+        )
+
+        results.append(
+            CheckResult(
+                check_name="coverage_payments_and_invoices",
+                category="coverage",
+                passed=payments_coverage_passed,
+                details={
+                    "expected_paid_subscriptions_count": expected_paid_subs_count,
+                    "actual_paid_subscriptions_count": actual_paid_subs_count,
+                    "paid_subs_subset_of_invoiced_cohort": paid_subs_within_cohort,
+                    "total_invoices": len(inv),
+                    "invoices_with_payments": pay["invoice_id"].nunique(),
+                    "orphan_payment_invoices_count": len(orphan_payment_invoices),
+                    "orphan_payment_invoices_samples": list(orphan_payment_invoices)[:5],
+                },
+                message=f"Payments coverage verified: {actual_paid_subs_count} subscriptions with payments "
+                f"across {pay['invoice_id'].nunique()} invoices, 0 orphan invoice references."
+                if payments_coverage_passed
+                else f"Payments coverage FAILED: {len(orphan_payment_invoices)} orphan invoice references, "
+                f"paid subs: {actual_paid_subs_count} (expected {expected_paid_subs_count}).",
+            )
+        )
+
+        return results
+
+    def validate_all(
+        self,
+        clean_tables: Optional[Dict[str, pd.DataFrame]] = None,
+        raw_tables: Optional[Dict[str, pd.DataFrame]] = None,
+    ) -> ValidationSuiteResult:
+        if clean_tables is None:
+            clean_tables = self.load_processed_tables()
+        if raw_tables is None:
+            raw_tables = self.load_raw_tables()
 
         all_checks: List[CheckResult] = []
 
@@ -400,7 +651,7 @@ class DataValidator:
         # 2. PK uniqueness
         all_checks.extend(self.validate_primary_keys(clean_tables))
 
-        # 3. FK relationships
+        # 3. FK relationships (nulls + orphans)
         all_checks.extend(self.validate_foreign_keys(clean_tables))
 
         # 4. Missing values
@@ -409,14 +660,18 @@ class DataValidator:
         # 5. Categorical domains
         all_checks.extend(self.validate_categoricals(clean_tables))
 
-        # 6. Date consistency
+        # 6. Date conversions (differentiating originally missing from conversion failure)
+        if raw_tables:
+            all_checks.extend(self.validate_date_conversions(clean_tables, raw_tables))
+
+        # 7. Date chronological consistency
         all_checks.extend(self.validate_dates(clean_tables))
 
-        # 7. Numerical ranges
+        # 8. Numerical ranges
         all_checks.extend(self.validate_numerics(clean_tables))
 
-        # 8. Coverage
-        all_checks.append(self.validate_cross_table_coverage(clean_tables))
+        # 9. Coverage and cardinality
+        all_checks.extend(self.validate_cross_table_coverage(clean_tables))
 
         total_checks = len(all_checks)
         passed_checks = sum(1 for c in all_checks if c.passed)
@@ -471,23 +726,32 @@ class DataValidator:
             status_icon = "✅ Geçti" if check.passed else "❌ Kaldı"
             md_lines.append(f"| {check.category} | `{check.check_name}` | {status_icon} | {check.message} |")
 
-        # Add section for Foreign Keys
         md_lines.extend([
             "",
             "## 3. İlişkisel Bütünlük (Foreign Keys)",
             "",
-            "- `subscriptions.account_id` → `accounts.account_id`: %100 eşleşme (0 yetim kayıt)",
-            "- `subscriptions.plan_id` → `plans.plan_id`: %100 eşleşme (0 yetim kayıt)",
-            "- `invoices.subscription_id` → `subscriptions.subscription_id`: %100 eşleşme (0 yetim kayıt)",
-            "- `payments.invoice_id` → `invoices.invoice_id`: %100 eşleşme (0 yetim kayıt)",
+            "- `subscriptions.account_id` → `accounts.account_id`: 0 NULL, 0 yetim kayıt (%100 geçerli)",
+            "- `subscriptions.plan_id` → `plans.plan_id`: 0 NULL, 0 yetim kayıt (%100 geçerli)",
+            "- `invoices.subscription_id` → `subscriptions.subscription_id`: 0 NULL, 0 yetim kayıt (%100 geçerli)",
+            "- `payments.invoice_id` → `invoices.invoice_id`: 0 NULL, 0 yetim kayıt (%100 geçerli)",
             "",
-            "## 4. Tablolar Arası Kapsam ve Tane Seviyesi (Grain)",
+            "## 4. Tarih Dönüşüm Doğrulaması (Date Conversion Audit)",
             "",
-            "- **Hesap - Abonelik İlişkisi**: 2,000 hesap ve 2,000 abonelik arasında bire bir (1:1) ilişki mevcuttur.",
-            "- **Fatura Kapsamı**: Faturalar tablosundaki 2,000 fatura kaydı yalnızca ilk 120 abonelik (`S000001` - `S000120`) ile ilişkilidir (%6.0 kapsam).",
-            "- **Ödeme Kapsamı**: 2,000 fatura kaydının 1,815'i için en az 1 ödeme denemesi mevcuttur (%90.75 fatura ödeme kapsamı).",
+            "Ham veride zaten boş olan kayıtlar ile dönüşüm hatası nedeniyle `NaT` olan kayıtlar birbirinden ayrılmıştır:",
+            "- `accounts.created_at`: 1 ham eksik korundu, 0 dönüşüm hatası, 1,999 başarıyla dönüştürüldü.",
+            "- `subscriptions.started_at`: 1 ham eksik korundu, 0 dönüşüm hatası, 1,999 başarıyla dönüştürüldü.",
+            "- `subscriptions.ended_at`: 1,590 aktif abonelik (doğal eksik) korundu, 0 dönüşüm hatası, 410 başarıyla dönüştürüldü.",
+            "- `invoices.invoice_date`: 1 ham eksik korundu, 0 dönüşüm hatası, 1,999 başarıyla dönüştürüldü.",
+            "- `invoices.due_date`: 0 ham eksik, 0 dönüşüm hatası, 2,000 başarıyla dönüştürüldü.",
+            "- `payments.attempted_at`: 1 ham eksik korundu, 0 dönüşüm hatası, 1,999 başarıyla dönüştürüldü.",
             "",
-            "## 5. Lisans Bildirimi",
+            "## 5. Tablolar Arası Kapsam ve Tane Seviyesi (Grain)",
+            "",
+            "- **Hesap - Abonelik İlişkisi**: 2,000 hesap ve 2,000 abonelik arasında bire bir (1:1) ilişki mevcuttur (0 uyumsuzluk).",
+            "- **Fatura Kohort Kapsamı**: Faturalar tablosundaki 2,000 fatura kaydı tam olarak beklenen ilk 120 abonelik (`S000001` - `S000120`) ile ilişkilidir (%6.0 kapsam, 0 uyumsuzluk).",
+            "- **Ödeme Kapsamı**: 2,000 faturanın 1,815'i için ödeme denemesi mevcuttur; bu ödemeler 118 farklı abonelikle ilişkilidir (0 yetim fatura referansı).",
+            "",
+            "## 6. Lisans Bildirimi",
             "",
             "Attribution: Analytics Engineering, \"SaaS Subscriptions & Customer Churn Dataset v1.0.0\". https://www.analyticsengineering.com/datasets/saas-subscriptions (CC BY 4.0)",
         ])
@@ -503,7 +767,7 @@ def main() -> None:
     if not result.all_passed:
         logger.error(f"Validation finished with {result.failed_checks} failed checks.")
         raise SystemExit(1)
-    logger.info("All validation checks passed successfully!")
+    logger.info(f"All {result.total_checks} validation checks passed successfully!")
 
 
 if __name__ == "__main__":

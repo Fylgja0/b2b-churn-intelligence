@@ -29,7 +29,7 @@ ml/
 ├── src/
 │   ├── data/
 │   │   ├── preprocess.py               # Veri ön işleme, tekilleştirme, tip ve format standardizasyonu
-│   │   ├── validation.py               # Bütünlük, PK/FK, kural ve kapsam testleri
+│   │   ├── validation.py               # Güçlendirilmiş bütünlük, PK/FK, kural, tarih ve kapsam testleri (38 kontrol)
 │   │   └── build_dataset.py            # Çoğalmayı önleyen 2 aşamalı birleştirme pipeline'ı
 │   ├── eda/
 │   │   └── eda.py                      # İstatistiksel analiz ve 12 adet görselleştirme üretici
@@ -60,9 +60,9 @@ ml/
 │           ├── 11_payment_failures_vs_churn_cohort.png
 │           └── 12_invoice_coverage_breakdown.png
 ├── artifacts/                          # İleride eğitilecek modeller ve scaler nesneleri için
-└── tests/                              # Pytest test paketi
+└── tests/                              # Pytest test paketi (Pozitif ve Negatif Testler)
     ├── test_preprocess.py
-    ├── test_validation.py
+    ├── test_validation.py              # Doğrulama pozitif kontrolleri ve 7 negatif hata yakalama testi
     └── test_build_dataset.py
 ```
 
@@ -98,7 +98,11 @@ python -m ml.src.data.preprocess
 *Çıktılar*: `ml/data/processed/tables/*.csv`, `ml/reports/cleaning/cleaning_report.md`
 
 ### Adım 2: Veri Bütünlüğü Doğrulaması (Validation)
-Birincil ve yabancı anahtar ilişkilerini (PK/FK), eksik değer politikalarını, kategorik alanları, kronolojik tarih tutarlılığını ve sayısal sınırları 30 ayrı kontrol ile doğrular.
+Tablolar arası ilişkileri ve veri bütünlüğünü 38 ayrı kontrol ile doğrular:
+- **Foreign Key Kontrolleri**: Hem `NULL` yabancı anahtarları hem de eşleşmeyen (yetim) kayıtları ayrı ayrı denetler.
+- **Tarih Dönüşüm Ayrımı**: Ham veride zaten boş olan kayıtlar ile dönüştürülemediği için `NaT` olan hatalı kayıtları birbirinden ayırır.
+- **Kronolojik Tutarlılık**: Abonelik ve fatura tarihlerinin mantıksal sıralamasını denetler.
+- **Kapsam ve Kohort Doğrulaması**: 1:1 hesap-abonelik ilişkisini ve faturaların tam olarak beklenen 120 abonelik kohortuyla (`S000001` - `S000120`) eşleştiğini katı kurallarla doğrular.
 
 ```bash
 python ml/src/data/validation.py
@@ -118,7 +122,7 @@ python -m ml.src.data.build_dataset
 *Çıktılar*: `ml/data/processed/merged/account_level_eda_dataset.csv`, `ml/reports/cleaning/dataset_build_summary.json`
 
 ### Adım 4: Keşifsel Veri Analizi (EDA)
-Kapsamlı istatistiksel analizler çalıştırır ve 12 adet görsel grafik ile detaylı markdown özet raporu oluşturur.
+Kapsamlı istatistiksel analizler, bağımsızlık testleri çalıştırır; 12 adet görsel grafik ile detaylı markdown özet raporu oluşturur.
 
 ```bash
 python ml/src/eda/eda.py
@@ -128,7 +132,7 @@ python -m ml.src.eda.eda
 *Çıktılar*: `ml/reports/eda/figures/*.png`, `ml/reports/eda/eda_summary_report.md`
 
 ### Adım 5: Otomatik Testlerin Çalıştırılması (Testing)
-Veri işleme, bütünlük ve birleştirme kurallarının doğruluğunu `pytest` ile test eder.
+Veri işleme, bütünlük ve birleştirme kurallarının doğruluğunu `pytest` ile test eder. Test paketi hem beklenen veri üzerindeki pozitif kontrolleri hem de bozulmuş veri senaryolarını yakalayan **7 negatif testi** içerir (Toplam 23 test).
 
 ```bash
 pytest ml/tests -v
@@ -139,20 +143,32 @@ pytest ml/tests -v
 ## 4. Temizlik ve Eksik Değer Politikası
 
 - **Mükerrer Kayıtlar**: Her ham tabloda tam 1 adet tam mükerrer satır tespit edilmiş ve `keep='first'` prensibiyle güvenle ayıklanmıştır.
-- **`accounts.region` (479 eksik)**: Coğrafi bölge verisi yapay olarak doldurulmamış, analitik tarafsızlığı korumak adına `NaN` olarak bırakılmıştır. Yapılan analizde eksik bölgeye sahip hesapların churn oranı (%21.09), bilinen bölgelerle neredeyse farksızdır (MCAR yapısı).
+- **`accounts.region` (479 eksik)**: Coğrafi bölge verisi yapay olarak doldurulmamış, analitik tarafsızlığı korumak adına `NaN` olarak bırakılmıştır. Eksik bölgeye sahip hesapların churn oranı (%21.09), bilinen bölgelerle (APAC: %21.60, LATAM: %20.36, EMEA: %19.04) sayısal olarak benzerdir. Gözlemlenebilir değişkenlerle yapılan Ki-kare testlerinde anlamlı bir ilişki bulunamamış olmakla birlikte, gözlemlenemeyen etkenlerin eksikliği tetikleyip tetiklemediği bilinemeyeceğinden **eksikliğin kesin olarak MCAR olduğu iddia edilemez**; eksiklik mekanizması mevcut veriler ışığında **belirsiz** olarak değerlendirilmelidir.
 - **`subscriptions.ended_at` (1,590 eksik)**: Bu eksiklikler veri hatası değildir; aktif aboneliklerin henüz iptal edilmediğini ifade eder. 410 iptal edilmiş aboneliğin tamamında bitiş tarihi eksiksiz mevcuttur.
-- **Eksik Tarihler**: Tablolarda 1'er adet bulunan eksik tarihler tahmine dayalı olarak doldurulmamıştır.
+- **Eksik Tarihler**: Tablolarda 1'er adet bulunan başlangıçta eksik tarihler tahmine dayalı olarak doldurulmamış, analitik şeffaflık adına `NaT` olarak korunmuştur.
 
 ---
 
-## 5. Kritik Veri Sınırlılığı ve Analiz Notu
+## 5. Kritik Analitik Uyarılar ve Modelleme Sınırları
 
+### 5.1. Fatura ve Ödeme Kapsam Kısıtı (Invoice Coverage Disparity)
 > [!WARNING]
-> **Fatura ve Ödeme Kapsam Kısıtı (Invoice Coverage Disparity)**:
 > `invoices.csv` içerisindeki 2,000 fatura kaydı ve `payments.csv` içerisindeki 2,000 ödeme denemesi **yalnızca ilk 120 abonelik (`S000001` - `S000120`)** ile ilişkilidir. Geriye kalan 1,880 abonelikte (%94.0) hiçbir fatura ve ödeme geçmişi bulunmamaktadır.
-> Bu nedenle:
-> - `account_level_eda_dataset.csv` dosyası **keşifsel analiz (EDA) amaçlıdır**; henüz doğrudan model eğitimine hazır kabul edilmemelidir.
-> - İleride ML özellikleri üretilirken ödeme metriklerinin tüm popülasyonu temsil etmediği göz önünde bulundurulmalıdır.
+> - `account_level_eda_dataset.csv` dosyası **yalnızca keşifsel analiz (EDA) amaçlıdır**; doğrudan model eğitimine hazır kabul edilmemelidir.
+> - İleride ML modelleri geliştirilirken ödeme ve fatura öznitelikleri tüm popülasyona genellenemez.
+
+### 5.2. Tenure Değişkeni ve Hedef Sızıntısı (Target Leakage) Riski
+> [!CAUTION]
+> Veri setindeki `tenure_days` değişkeni:
+> - İptal edilmiş müşterilerde: `ended_at - started_at`
+> - Aktif müşterilerde: `2025-12-31 - started_at`
+> olarak hesaplanmıştır (farklı referans noktaları kullanılmıştır).
+> 
+> Bu hesaplama tanımlayıcı analiz (EDA) için uygundur; ancak **tahmin modelinde doğrudan girdi özniteliği olarak kullanılırsa Hedef Sızıntısına (Target Leakage) yol açar**, çünkü `ended_at` bilgisi gelecekte gerçekleşen churn olayının sonucudur. Model geliştirmeden önce bir tahmin referans zamanı ($T_0$) sabitlenmeli ve tenure yalnızca $T_0$ anına kadar geçen süre olarak türetilmelidir.
+
+### 5.3. Aylık Churn Grafiği: Hacim vs Oran Ayrımı
+> [!NOTE]
+> `10_monthly_churn_trend.png` grafiği aylık churn oranını değil, aylık **iptal edilen abonelik sayısını (hacmini)** gösterir. Her ay risk altındaki müşteri tabanı tanımlanmadan bir oran türetmek yanıltıcı olacağından ve sentetik veride mevsimsellik veya nedensellik hakkında yeterli kanıt bulunmadığından kesin çıkarımlardan kaçınılmalıdır.
 
 ---
 

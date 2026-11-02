@@ -37,7 +37,14 @@
 | `LATAM` | 501 | 102 | %20.36 |
 | `Missing` | 479 | 101 | %21.09 |
 
-> **Gözlem**: Eksik bölge bilgisine sahip 479 hesabın churn oranı (%21.09), bilinen bölgelerle (APAC: %21.60, LATAM: %20.36, EMEA: %19.04) hemen hemen aynıdır. Bu durum eksik bölge bilgisinin Churn ile doğrudan ilişkili olmadığını (MCAR yapısı sergilediğini) gösterir.
+> **Gözlem ve Analitik Yorum (Eksik Veri Mekanizması)**:
+> - Eksik bölge bilgisine sahip 479 hesabın churn oranı (%21.09), bilinen bölgelerle (APAC: %21.60, LATAM: %20.36, EMEA: %19.04) sayısal olarak benzerdir.
+> - Gözlemlenebilir değişkenlerle eksiklik durumu arasında Ki-kare (Chi-square) bağımsızlık testleri gerçekleştirilmiştir:
+>   - Churn durumu vs Eksik Bölge: $\chi^2 = 0.1325$ (dof=1)
+>   - Segment vs Eksik Bölge: $\chi^2 = 0.1604$ (dof=2)
+>   - Edinme Kanalı vs Eksik Bölge: $\chi^2 = 1.8838$ (dof=4)
+>   - Plan vs Eksik Bölge: $\chi^2 = 1.3764$ (dof=3)
+> - **Önemli Metodolojik Uyarı**: Yalnızca churn oranlarının benzer olması ve gözlemlenebilir değişkenlerle istatistiksel bağımlılık bulunamamış olması, eksikliğin kesin olarak **MCAR (Missing Completely At Random)** olduğunu kanıtlamaz. Gözlemlenemeyen faktörlerin (unobserved confounders) eksiklik sürecini etkileyip etkilemediği mevcut veri seti ile test edilemez. Bu nedenle eksiklik mekanizması mevcut veriler ışığında **belirsiz / kanıtlanmamış** olarak değerlendirilmeli, eksik değerler yapay varsayımlarla doldurulmamalıdır.
 
 ### 2.4. Edinme Kanalı (Acquisition Channel) Bazlı Churn Analizi
 | Kanal | Toplam Müşteri | Churn Sayısı | Churn Oranı (%) |
@@ -53,6 +60,11 @@
 ### 2.5. Gelir (MRR) ve Süre (Tenure) Analizi
 - **MRR**: Churned müşterilerin ortalama sözleşmeli MRR değeri ($357.90), aktif müşterilerin ortalamasından ($332.08) bir miktar daha yüksektir. Bunun sebebi churn eden az sayıdaki Enterprise müşterisinin ortalamayı yukarı çekmesidir. Medyan MRR her iki grupta da $199.00 seviyesindedir.
 - **Tenure**: Churn eden müşteriler ortalama 355 gün (medyan 344 gün) sonra ayrılmaktadır. Kayıplar özellikle 6. ve 12. aylar arasında yoğunlaşmaktadır.
+- **Tenure Değişkeni ve Hedef Sızıntısı (Target Leakage) Uyarısı**:
+  - Veri setindeki `tenure_days` değişkeni, iptal edilmiş aboneliklerde `ended_at - started_at`, aktif aboneliklerde ise gözlem kesim tarihi olan `2025-12-31` ile `started_at` arasındaki fark olarak hesaplanmıştır (farklı referans tarihleri kullanılmıştır).
+  - Bu hesaplama tanımlayıcı keşifsel analiz (EDA) amacıyla uygundur.
+  - Ancak **bir churn tahmin modelinde doğrudan girdi özniteliği olarak kullanılması durumunda Hedef Sızıntısına (Target Leakage) yol açar**; çünkü iptal tarihi (`ended_at`) gelecekte gerçekleşen hedef olayın bilgisini içerir.
+  - Gelecekte makine öğrenmesi modeli eğitilmeden önce tahminin yapılacağı zaman noktası ($T_0$ / observation window) sabitlenmeli ve tenure yalnızca $T_0$ anına kadar geçen süre olarak türetilmelidir.
 
 ## 3. Veri Seti Sınırlılıkları ve Kritik Fatura Analizi
 
@@ -78,9 +90,12 @@ Tüm grafikler yüksek çözünürlükte (300 DPI) `ml/reports/eda/figures/` diz
 7. `07_tenure_distribution_by_churn.png`: Churn süresi ve müşteri kalma süresi analizi (Tenure Days).
 8. `08_missing_values_matrix.png`: Tablo sütunları bazında eksik değer oranları grafiği.
 9. `09_numeric_distributions.png`: Koltuk sayısı, MRR, liste fiyatı ve ek koltuk dağılımları.
-10. `10_monthly_churn_trend.png`: 2023-2025 aylık ayrılma trendi ve mevsimsellik.
+10. `10_monthly_churn_trend.png`: 2023-2025 aylık iptal hacmi (cancellation count / volume) trendi.
 11. `11_payment_failures_vs_churn_cohort.png`: 120 abonelik fatura kohortunda ödeme başarısızlıkları ve churn ilişkisi.
 12. `12_invoice_coverage_breakdown.png`: Fatura kapsamındaki %6'lık kısıt ve kohort karşılaştırması.
+
+> [!NOTE]
+> **Aylık İptal Grafiği Notu**: `10_monthly_churn_trend.png` grafiği aylık churn oranını değil, iptal edilen abonelik sayısını (hacmini) göstermektedir. Her ay risk altındaki aktif müşteri tabanı sabit ve net tanımlanmadığından bir oran türetilmemiştir. Mevcut sentetik veride mevsimsellik veya nedensellik hakkında yeterli kanıt bulunmadığından kesin çıkarımlardan kaçınılmalıdır.
 
 ## 5. Lisans ve Kaynak Gösterimi
 

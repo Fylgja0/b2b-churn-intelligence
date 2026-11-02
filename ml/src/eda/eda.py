@@ -629,11 +629,46 @@ class SaasChurnEDA:
             else:
                 md_lines.append(f"| `{var_name}` | N/A | N/A | N/A | N/A | N/A | Hesaplanamadı ({t_res.get('error', 'Hata')}) |")
 
+        # Dynamic evaluation of Chi-Square results
+        success_tests = [t for t in metrics["region_independence_tests"].values() if t.get("status") == "success"]
+        violated_tests = [t for t in success_tests if not t.get("assumptions_met", False)]
+        all_p_vals = [t["p_value"] for t in success_tests if t.get("p_value") is not None]
+        all_min_exps = [t["min_expected_frequency"] for t in success_tests if t.get("min_expected_frequency") is not None]
+
+        if all_p_vals:
+            min_p = min(all_p_vals)
+            max_p = max(all_p_vals)
+            p_val_analysis = (
+                f"$\\alpha = 0.05$ anlamlılık düzeyinde incelendiğinde, hesaplanan p-değerleri "
+                f"({min_p:.4f} ile {max_p:.4f} aralığında) "
+                f"{'tüm test edilen değişkenler için ' if min_p >= 0.05 else ''}anlamlılık eşiğinin "
+                f"{'üzerindedir' if min_p >= 0.05 else 'altında olan değişkenler bulunmaktadır'}. "
+                f"{'Bu durum, eksik bölge bilgisi ile test edilen değişkenler arasında istatistiksel olarak anlamlı bir ilişki bulunamadığını gösterir.' if min_p >= 0.05 else 'Anlamlı ilişki gösteren değişkenler dikkatle incelenmelidir.'}"
+            )
+        else:
+            p_val_analysis = "Ki-kare testleri hesaplanamamıştır."
+
+        if violated_tests:
+            violated_vars = [var for var, t in metrics["region_independence_tests"].items() if not t.get("assumptions_met", False)]
+            assumption_analysis = (
+                f"⚠️ **Cochran Varsayım İhlali**: `{', '.join(violated_vars)}` değişken(ler)inde beklenen hücre frekansı "
+                f"5'in altına düşmüştür (E_ij < 5). Asimptotik Ki-kare testi bu değişkenler için güvenilir olmayabilir; "
+                f"Fisher exact test veya kategori birleştirme önerilir."
+            )
+        elif all_min_exps:
+            overall_min_exp = min(all_min_exps)
+            assumption_analysis = (
+                f"Minimum beklenen hücre frekanslarının tamamı (en düşüğü {overall_min_exp:.2f}) 5 eşiğinin üzerindedir "
+                f"ve beklenen frekansı 5'in altında olan hücre yoktur. Cochran varsayımları tüm testlerde tam olarak karşılanmaktadır."
+            )
+        else:
+            assumption_analysis = "Hücre frekansı varsayımları değerlendirilememiştir."
+
         md_lines.extend([
             "",
             "> **İstatistiksel Yorum ve Metodolojik Sınırlar (Eksik Veri Mekanizması)**:",
-            "> - **p-değeri Analizi**: $\\alpha = 0.05$ anlamlılık düzeyinde incelendiğinde, tüm değişkenler için p-değerleri ($p > 0.70$) anlamlılık eşiğinin oldukça üzerindedir. Bu durum, eksik bölge bilgisi ile churn, müşteri segmenti, edinme kanalı veya plan türü arasında istatistiksel olarak anlamlı bir ilişki bulunamadığını gösterir.",
-            "> - **Varsayım Kontrolü**: Minimum beklenen hücre frekanslarının tamamı (en düşüğü 24.91) 5 eşiğinin çok üzerindedir ve beklenen frekansı 5'in altında olan hiçbir hücre yoktur. Cochran varsayımları tam olarak karşılanmaktadır.",
+            f"> - **p-değeri Analizi**: {p_val_analysis}",
+            f"> - **Varsayım Kontrolü**: {assumption_analysis}",
             "> - **Önemli Metodolojik Uyarı**: Raporlanan p-değerleri keşifsel ve ham p-değerleridir; çoklu karşılaştırma (multiple testing) düzeltmesi uygulanmamıştır. En önemlisi, **gözlemlenebilir değişkenlerle anlamlı bir ilişki bulunamaması (bağımlılık olmaması), eksikliğin tamamen rastgele (MCAR - Missing Completely At Random) olduğunun kanıtı değildir**. Gözlemlenemeyen faktörlerin (unobserved confounders) eksiklik sürecini etkileyip etkilemediği bu veri setiyle test edilemez. Bu nedenle eksiklik mekanizması mevcut veriler ışığında **belirsiz / kanıtlanmamış** olarak değerlendirilmeli, eksik değerler yapay varsayımlarla doldurulmamalıdır.",
             "",
             "### 2.4. Edinme Kanalı (Acquisition Channel) Bazlı Churn Analizi",

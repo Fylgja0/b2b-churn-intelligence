@@ -2,8 +2,8 @@
 
 ## 1. Doğrulama Özeti
 
-- **Toplam Kontrol Sayısı**: 38
-- **Başarılı Kontroller**: 38 ✅
+- **Toplam Kontrol Sayısı**: 39
+- **Başarılı Kontroller**: 39 ✅
 - **Başarısız Kontroller**: 0 ❌
 - **Genel Bütünlük Durumu**: BAŞARILI
 
@@ -30,6 +30,7 @@
 | categoricals | `categorical_domain_invoices_invoice_status` | ✅ Geçti | Categorical 'invoice_status' in 'invoices' passed (valid domain, nullability rule satisfied: nullable=False, nulls=0). |
 | categoricals | `categorical_domain_payments_payment_status` | ✅ Geçti | Categorical 'payment_status' in 'payments' passed (valid domain, nullability rule satisfied: nullable=False, nulls=0). |
 | categoricals | `categorical_domain_plans_plan_id` | ✅ Geçti | Categorical 'plan_id' in 'plans' passed (valid domain, nullability rule satisfied: nullable=False, nulls=0). |
+| categoricals | `categorical_domain_plans_plan_name` | ✅ Geçti | Categorical 'plan_name' in 'plans' passed (valid domain, nullability rule satisfied: nullable=False, nulls=0). |
 | date_conversion | `date_conversion_accounts_created_at` | ✅ Geçti | Date conversion check on 'accounts.created_at' PASSED: 1999 converted, 1 originally missing preserved, 0 errors. |
 | date_conversion | `date_conversion_subscriptions_started_at` | ✅ Geçti | Date conversion check on 'subscriptions.started_at' PASSED: 1999 converted, 1 originally missing preserved, 0 errors. |
 | date_conversion | `date_conversion_subscriptions_ended_at` | ✅ Geçti | Date conversion check on 'subscriptions.ended_at' PASSED: 410 converted, 1590 originally missing preserved, 0 errors. |
@@ -78,6 +79,7 @@ ham ve temizlenmiş tarihlerin aynı takvim gününü temsil ettiği doğrulanm�
 - `invoices.invoice_status`: Zorunlu (0 NULL, geçerli).
 - `payments.payment_status`: Zorunlu (0 NULL, geçerli).
 - `plans.plan_id`: Zorunlu PK (0 NULL, geçerli).
+- `plans.plan_name`: Zorunlu (0 NULL, geçerli).
 
 ## 6. Tablolar Arası Kapsam ve Bire Bir (1:1) İlişki Doğrulaması
 

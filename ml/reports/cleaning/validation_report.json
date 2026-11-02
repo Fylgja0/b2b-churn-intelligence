@@ -1,7 +1,7 @@
 {
   "all_passed": true,
-  "total_checks": 38,
-  "passed_checks": 38,
+  "total_checks": 39,
+  "passed_checks": 39,
   "failed_checks": 0,
   "checks": [
     {
@@ -223,6 +223,8 @@
       "details": {
         "table": "accounts",
         "column": "region",
+        "missing_table": false,
+        "missing_column": false,
         "nullable": true,
         "null_count": 479,
         "allowed_values": [
@@ -247,6 +249,8 @@
       "details": {
         "table": "accounts",
         "column": "segment",
+        "missing_table": false,
+        "missing_column": false,
         "nullable": false,
         "null_count": 0,
         "allowed_values": [
@@ -270,6 +274,8 @@
       "details": {
         "table": "accounts",
         "column": "acquisition_channel",
+        "missing_table": false,
+        "missing_column": false,
         "nullable": false,
         "null_count": 0,
         "allowed_values": [
@@ -297,6 +303,8 @@
       "details": {
         "table": "subscriptions",
         "column": "status",
+        "missing_table": false,
+        "missing_column": false,
         "nullable": false,
         "null_count": 0,
         "allowed_values": [
@@ -318,6 +326,8 @@
       "details": {
         "table": "subscriptions",
         "column": "plan_id",
+        "missing_table": false,
+        "missing_column": false,
         "nullable": false,
         "null_count": 0,
         "allowed_values": [
@@ -343,6 +353,8 @@
       "details": {
         "table": "invoices",
         "column": "invoice_status",
+        "missing_table": false,
+        "missing_column": false,
         "nullable": false,
         "null_count": 0,
         "allowed_values": [
@@ -366,6 +378,8 @@
       "details": {
         "table": "payments",
         "column": "payment_status",
+        "missing_table": false,
+        "missing_column": false,
         "nullable": false,
         "null_count": 0,
         "allowed_values": [
@@ -387,6 +401,8 @@
       "details": {
         "table": "plans",
         "column": "plan_id",
+        "missing_table": false,
+        "missing_column": false,
         "nullable": false,
         "null_count": 0,
         "allowed_values": [
@@ -404,6 +420,33 @@
         "unexpected_values": []
       },
       "message": "Categorical 'plan_id' in 'plans' passed (valid domain, nullability rule satisfied: nullable=False, nulls=0)."
+    },
+    {
+      "check_name": "categorical_domain_plans_plan_name",
+      "category": "categoricals",
+      "passed": true,
+      "details": {
+        "table": "plans",
+        "column": "plan_name",
+        "missing_table": false,
+        "missing_column": false,
+        "nullable": false,
+        "null_count": 0,
+        "allowed_values": [
+          "Enterprise",
+          "Growth",
+          "Scale",
+          "Starter"
+        ],
+        "actual_values": [
+          "Enterprise",
+          "Growth",
+          "Scale",
+          "Starter"
+        ],
+        "unexpected_values": []
+      },
+      "message": "Categorical 'plan_name' in 'plans' passed (valid domain, nullability rule satisfied: nullable=False, nulls=0)."
     },
     {
       "check_name": "date_conversion_accounts_created_at",
@@ -649,20 +692,24 @@
       "passed": true,
       "details": {
         "expected_relation": "1:1 mapping (exact one subscription per account)",
-        "expected_accounts_count": 2000,
-        "expected_subscriptions_count": 2000,
         "actual_accounts_count": 2000,
         "actual_unique_accounts": 2000,
+        "duplicate_accounts_count": 0,
+        "null_account_pks_count": 0,
         "actual_subscriptions_count": 2000,
         "actual_unique_subscriptions": 2000,
+        "duplicate_subs_count": 0,
+        "null_sub_pks_count": 0,
         "actual_unique_accounts_in_subs": 2000,
+        "duplicate_account_refs_count": 0,
+        "null_account_refs_count": 0,
         "missing_accounts_count": 0,
         "missing_accounts_samples": [],
         "unexpected_accounts_count": 0,
         "unexpected_accounts_samples": [],
-        "duplicate_account_refs_count": 0,
         "row_count_diff": 0,
-        "mismatch_count": 0
+        "mismatch_count": 0,
+        "failure_reasons": []
       },
       "message": "Account-Subscription 1:1 relationship confirmed (2,000 accounts = 2,000 subscriptions, 0 mismatches)."
     },

@@ -49,8 +49,8 @@ Hesaplanan parametreler: $\chi^2$ test istatistiği, serbestlik derecesi (dof), 
 | `plan_name` | 1.3764 | 3 | 0.7111 | 24.91 | 0/8 | Karşılandı ✅ |
 
 > **İstatistiksel Yorum ve Metodolojik Sınırlar (Eksik Veri Mekanizması)**:
-> - **p-değeri Analizi**: $\alpha = 0.05$ anlamlılık düzeyinde incelendiğinde, tüm değişkenler için p-değerleri ($p > 0.70$) anlamlılık eşiğinin oldukça üzerindedir. Bu durum, eksik bölge bilgisi ile churn, müşteri segmenti, edinme kanalı veya plan türü arasında istatistiksel olarak anlamlı bir ilişki bulunamadığını gösterir.
-> - **Varsayım Kontrolü**: Minimum beklenen hücre frekanslarının tamamı (en düşüğü 24.91) 5 eşiğinin çok üzerindedir ve beklenen frekansı 5'in altında olan hiçbir hücre yoktur. Cochran varsayımları tam olarak karşılanmaktadır.
+> - **p-değeri Analizi**: $\alpha = 0.05$ anlamlılık düzeyinde incelendiğinde, hesaplanan p-değerleri (0.7111 ile 0.9229 aralığında) tüm test edilen değişkenler için anlamlılık eşiğinin üzerindedir. Bu durum, eksik bölge bilgisi ile test edilen değişkenler arasında istatistiksel olarak anlamlı bir ilişki bulunamadığını gösterir.
+> - **Varsayım Kontrolü**: Minimum beklenen hücre frekanslarının tamamı (en düşüğü 24.91) 5 eşiğinin üzerindedir ve beklenen frekansı 5'in altında olan hücre yoktur. Cochran varsayımları tüm testlerde tam olarak karşılanmaktadır.
 > - **Önemli Metodolojik Uyarı**: Raporlanan p-değerleri keşifsel ve ham p-değerleridir; çoklu karşılaştırma (multiple testing) düzeltmesi uygulanmamıştır. En önemlisi, **gözlemlenebilir değişkenlerle anlamlı bir ilişki bulunamaması (bağımlılık olmaması), eksikliğin tamamen rastgele (MCAR - Missing Completely At Random) olduğunun kanıtı değildir**. Gözlemlenemeyen faktörlerin (unobserved confounders) eksiklik sürecini etkileyip etkilemediği bu veri setiyle test edilemez. Bu nedenle eksiklik mekanizması mevcut veriler ışığında **belirsiz / kanıtlanmamış** olarak değerlendirilmeli, eksik değerler yapay varsayımlarla doldurulmamalıdır.
 
 ### 2.4. Edinme Kanalı (Acquisition Channel) Bazlı Churn Analizi

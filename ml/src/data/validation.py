@@ -73,6 +73,10 @@ CATEGORICAL_POLICIES: Dict[str, Dict[str, Dict[str, Any]]] = {
             "allowed": {"PLN_STARTER", "PLN_GROWTH", "PLN_SCALE", "PLN_ENTERPRISE"},
             "nullable": False,  # Mandatory PK
         },
+        "plan_name": {
+            "allowed": {"Starter", "Growth", "Scale", "Enterprise"},
+            "nullable": False,  # Mandatory
+        },
     },
 }
 
@@ -277,12 +281,55 @@ class DataValidator:
         """
         Validates categorical domains while strictly enforcing nullability policies.
         Mandatory fields with NULLs fail; nullable fields (e.g. accounts.region) permit NULLs.
+        Missing tables or mandatory categorical columns fail explicitly with descriptive error messages.
         """
         results = []
         for tbl_name, col_dict in CATEGORICAL_POLICIES.items():
+            if tbl_name not in tables:
+                for col_name, policy in col_dict.items():
+                    results.append(
+                        CheckResult(
+                            check_name=f"categorical_domain_{tbl_name}_{col_name}",
+                            category="categoricals",
+                            passed=False,
+                            details={
+                                "table": tbl_name,
+                                "column": col_name,
+                                "missing_table": True,
+                                "missing_column": True,
+                                "nullable": policy["nullable"],
+                                "null_count": None,
+                                "allowed_values": sorted(list(policy["allowed"])),
+                                "actual_values": [],
+                                "unexpected_values": [],
+                            },
+                            message=f"Categorical '{col_name}' in '{tbl_name}' FAILED: Table '{tbl_name}' is missing.",
+                        )
+                    )
+                continue
+
             df = tables[tbl_name]
             for col_name, policy in col_dict.items():
                 if col_name not in df.columns:
+                    results.append(
+                        CheckResult(
+                            check_name=f"categorical_domain_{tbl_name}_{col_name}",
+                            category="categoricals",
+                            passed=False,
+                            details={
+                                "table": tbl_name,
+                                "column": col_name,
+                                "missing_table": False,
+                                "missing_column": True,
+                                "nullable": policy["nullable"],
+                                "null_count": None,
+                                "allowed_values": sorted(list(policy["allowed"])),
+                                "actual_values": [],
+                                "unexpected_values": [],
+                            },
+                            message=f"Categorical '{col_name}' in '{tbl_name}' FAILED: Mandatory column '{col_name}' is missing from table '{tbl_name}'.",
+                        )
+                    )
                     continue
 
                 series = df[col_name]
@@ -321,6 +368,8 @@ class DataValidator:
                         details={
                             "table": tbl_name,
                             "column": col_name,
+                            "missing_table": False,
+                            "missing_column": False,
                             "nullable": is_nullable,
                             "null_count": null_count,
                             "allowed_values": sorted(list(allowed_values)),
@@ -643,31 +692,90 @@ class DataValidator:
         inv = tables["invoices"]
         pay = tables["payments"]
 
+        # Accounts table primary key and row metrics
         total_accounts = len(acc)
-        unique_accounts = acc["account_id"].nunique()
+        null_account_pks_count = int(acc["account_id"].isna().sum())
+        unique_accounts = acc["account_id"].nunique(dropna=True)
+        duplicate_accounts_count = int(total_accounts - unique_accounts - null_account_pks_count) if total_accounts > 0 else 0
+
+        # Subscriptions table primary key and row metrics
         total_subs = len(sub)
-        unique_subs = sub["subscription_id"].nunique()
-        sub_unique_account_ids = sub["account_id"].nunique()
+        null_sub_pks_count = int(sub["subscription_id"].isna().sum())
+        unique_subs = sub["subscription_id"].nunique(dropna=True)
+        duplicate_subs_count = int(total_subs - unique_subs - null_sub_pks_count) if total_subs > 0 else 0
+
+        # Subscriptions table foreign key (account_id) reference metrics
+        sub_account_series = sub["account_id"]
+        null_account_refs_count = int(sub_account_series.isna().sum())
+        sub_unique_account_ids = sub_account_series.nunique(dropna=True)
+        duplicate_account_refs_count = int(sub_account_series.dropna().duplicated().sum())
 
         # Set analysis of account references
         acc_set = set(acc["account_id"].dropna())
-        sub_acc_set = set(sub["account_id"].dropna())
+        sub_acc_set = set(sub_account_series.dropna())
 
         missing_accounts = acc_set - sub_acc_set       # Accounts with no subscription
         unexpected_accounts = sub_acc_set - acc_set   # Subscriptions referencing non-existent accounts
-        duplicate_account_refs = total_subs - sub_unique_account_ids  # Multiple subscriptions for same account
+        missing_accounts_count = len(missing_accounts)
+        unexpected_accounts_count = len(unexpected_accounts)
+
+        # Row count difference (kept as diagnostic metric)
         row_count_diff = abs(total_accounts - total_subs)
 
-        # Total non-redundant mismatch count
-        mismatch_count = len(missing_accounts) + len(unexpected_accounts) + duplicate_account_refs
+        # Total non-redundant mismatch count across disjoint failure categories:
+        # 1. Accounts PK errors: duplicate PKs + null PKs
+        # 2. Subscriptions PK errors: duplicate PKs + null PKs
+        # 3. Foreign key errors: null account references in subscriptions
+        # 4. Relational errors: missing accounts + unexpected accounts + duplicate account references
+        mismatch_count = (
+            missing_accounts_count
+            + unexpected_accounts_count
+            + duplicate_account_refs_count
+            + duplicate_accounts_count
+            + duplicate_subs_count
+            + null_account_pks_count
+            + null_sub_pks_count
+            + null_account_refs_count
+        )
 
+        # Dynamic 1:1 evaluation (independent of hardcoded dataset size)
         is_1to1 = (
             (mismatch_count == 0)
             and (row_count_diff == 0)
+            and (total_accounts > 0)
+            and (total_subs > 0)
             and (total_accounts == unique_accounts)
             and (total_subs == unique_subs)
-            and (total_accounts == 2000)
-            and (total_subs == 2000)
+            and (total_accounts == total_subs)
+        )
+
+        failure_reasons = []
+        if total_accounts == 0 or total_subs == 0:
+            failure_reasons.append("empty table(s) detected")
+        if missing_accounts_count > 0:
+            failure_reasons.append(f"{missing_accounts_count} account(s) without subscription")
+        if unexpected_accounts_count > 0:
+            failure_reasons.append(f"{unexpected_accounts_count} subscription reference(s) to non-existent accounts")
+        if duplicate_account_refs_count > 0:
+            failure_reasons.append(f"{duplicate_account_refs_count} duplicate account reference(s) in subscriptions")
+        if duplicate_accounts_count > 0:
+            failure_reasons.append(f"{duplicate_accounts_count} duplicate account_id PK(s) in accounts")
+        if duplicate_subs_count > 0:
+            failure_reasons.append(f"{duplicate_subs_count} duplicate subscription_id PK(s) in subscriptions")
+        if null_account_pks_count > 0:
+            failure_reasons.append(f"{null_account_pks_count} NULL account_id PK(s)")
+        if null_sub_pks_count > 0:
+            failure_reasons.append(f"{null_sub_pks_count} NULL subscription_id PK(s)")
+        if null_account_refs_count > 0:
+            failure_reasons.append(f"{null_account_refs_count} NULL account_id reference(s) in subscriptions")
+        if row_count_diff > 0:
+            failure_reasons.append(f"row count difference of {row_count_diff} (accounts: {total_accounts}, subscriptions: {total_subs})")
+
+        msg = (
+            f"Account-Subscription 1:1 relationship confirmed ({total_accounts:,} accounts = {total_subs:,} subscriptions, 0 mismatches)."
+            if is_1to1
+            else f"Account-Subscription 1:1 relationship FAILED with {mismatch_count} mismatch(es) "
+            f"({'; '.join(failure_reasons)})."
         )
 
         results.append(
@@ -677,25 +785,26 @@ class DataValidator:
                 passed=is_1to1,
                 details={
                     "expected_relation": "1:1 mapping (exact one subscription per account)",
-                    "expected_accounts_count": 2000,
-                    "expected_subscriptions_count": 2000,
                     "actual_accounts_count": total_accounts,
                     "actual_unique_accounts": unique_accounts,
+                    "duplicate_accounts_count": duplicate_accounts_count,
+                    "null_account_pks_count": null_account_pks_count,
                     "actual_subscriptions_count": total_subs,
                     "actual_unique_subscriptions": unique_subs,
+                    "duplicate_subs_count": duplicate_subs_count,
+                    "null_sub_pks_count": null_sub_pks_count,
                     "actual_unique_accounts_in_subs": sub_unique_account_ids,
-                    "missing_accounts_count": len(missing_accounts),
+                    "duplicate_account_refs_count": duplicate_account_refs_count,
+                    "null_account_refs_count": null_account_refs_count,
+                    "missing_accounts_count": missing_accounts_count,
                     "missing_accounts_samples": list(missing_accounts)[:5],
-                    "unexpected_accounts_count": len(unexpected_accounts),
+                    "unexpected_accounts_count": unexpected_accounts_count,
                     "unexpected_accounts_samples": list(unexpected_accounts)[:5],
-                    "duplicate_account_refs_count": duplicate_account_refs,
                     "row_count_diff": row_count_diff,
                     "mismatch_count": mismatch_count,
+                    "failure_reasons": failure_reasons,
                 },
-                message="Account-Subscription 1:1 relationship confirmed (2,000 accounts = 2,000 subscriptions, 0 mismatches)."
-                if is_1to1
-                else f"Account-Subscription 1:1 relationship FAILED with {mismatch_count} mismatch(es) "
-                f"(missing: {len(missing_accounts)}, unexpected: {len(unexpected_accounts)}, duplicate refs: {duplicate_account_refs}).",
+                message=msg,
             )
         )
 
@@ -897,6 +1006,7 @@ class DataValidator:
             "- `invoices.invoice_status`: Zorunlu (0 NULL, geçerli).",
             "- `payments.payment_status`: Zorunlu (0 NULL, geçerli).",
             "- `plans.plan_id`: Zorunlu PK (0 NULL, geçerli).",
+            "- `plans.plan_name`: Zorunlu (0 NULL, geçerli).",
             "",
             "## 6. Tablolar Arası Kapsam ve Bire Bir (1:1) İlişki Doğrulaması",
             "",

@@ -60,11 +60,11 @@ ml/
 │           ├── 11_payment_failures_vs_churn_cohort.png
 │           └── 12_invoice_coverage_breakdown.png
 ├── artifacts/                          # İleride eğitilecek modeller ve scaler nesneleri için
-└── tests/                              # Pytest test paketi (35 adet pozitif ve negatif test)
-    ├── test_preprocess.py              # Ham veri varlığı, temizlik, tekilleştirme ve tip testleri
-    ├── test_validation.py              # 38 doğrulama kontrolü ve 14 negatif hata yakalama testi
-    ├── test_build_dataset.py           # 2 aşamalı birleştirme ve tane seviyesi testleri
-    └── test_eda.py                     # Ki-kare istatistikleri, Cochran varsayımları ve dejenere matris testleri
+└── tests/                              # Pytest test paketi (42 adet pozitif ve negatif test)
+    ├── test_preprocess.py              # Ham veri varlığı, temizlik, tekilleştirme ve tip testleri (5 test)
+    ├── test_validation.py              # 39 doğrulama kontrolü, dinamik kardinalite ve 18 negatif test (28 test)
+    ├── test_build_dataset.py           # 2 aşamalı birleştirme ve tane seviyesi testleri (4 test)
+    └── test_eda.py                     # Ki-kare, Cochran kuralı, Cochran ihlali ve dejenere matris testleri (5 test)
 ```
 
 ---
@@ -99,12 +99,12 @@ python -m ml.src.data.preprocess
 *Çıktılar*: `ml/data/processed/tables/*.csv`, `ml/reports/cleaning/cleaning_report.md`
 
 ### Adım 2: Veri Bütünlüğü Doğrulaması (Validation)
-Tablolar arası ilişkileri ve veri bütünlüğünü 38 ayrı kontrol ile doğrular:
+Tablolar arası ilişkileri ve veri bütünlüğünü 39 ayrı kontrol ile doğrular:
 - **Foreign Key Kontrolleri**: Hem `NULL` yabancı anahtarları hem de eşleşmeyen (yetim) kayıtları ayrı ayrı denetler.
 - **Gerçek Takvim ve Tarih Eşleşme Doğrulaması**: Yalnızca regex biçimine değil, gerçek takvim geçerliliğine (`datetime.strptime`) bakar (`2025-02-31` gibi hataları yakalar). Ham ve temiz tarihin aynı takvim gününü temsil ettiğini doğrular; başlangıçta eksik olanları, geçersiz olanları ve eşleşmeyenleri ayrı sayar.
-- **Kategorik Nullability Politikaları**: Zorunlu kategorik alanlarda (`subscriptions.status`, `accounts.acquisition_channel`) `NULL` değerleri hata olarak reddeder; izinli alanlarda (`accounts.region`) ise `NULL` varlığına kontrollü biçimde onay verir.
+- **Kategorik Politikalar ve Eksik Sütun Denetimi**: `plans.plan_name` ("Starter", "Growth", "Scale", "Enterprise") dahil tüm kategorik alanları denetler. Zorunlu kategorik alanlarda (`subscriptions.status`, `accounts.acquisition_channel`, `plans.plan_name`) `NULL` değerleri veya tablodan sütunun tamamen silinmesini hata olarak işaretler; izinli alanlarda (`accounts.region`) ise `NULL` varlığına kontrollü onay verir.
 - **Kronolojik Tutarlılık**: Abonelik ve fatura tarihlerinin mantıksal sıralamasını denetler (`started_at <= ended_at`).
-- **Kapsam ve Kohort Doğrulaması (1:1 Kardinalite)**: 1:1 hesap-abonelik ilişkisini incelerken `missing_accounts`, `unexpected_accounts` ve `duplicate_account_refs` metriklerini ayrı ayrı raporlar. Faturaların tam olarak beklenen 120 abonelik kohortuyla (`S000001` - `S000120`) eşleştiğini doğrular.
+- **Kapsam ve Kohort Doğrulaması (Dinamik 1:1 Kardinalite)**: 1:1 hesap-abonelik ilişkisini sabit 2.000 satır koşulu olmaksızın, dinamik küme teorisi ve sayaçlar (`missing_accounts`, `unexpected_accounts`, `duplicate_account_refs`, `duplicate_accounts_count`, `null_account_pks_count`, `row_count_diff`) ile değerlendirir. `mismatch_count` formülü mükerrer sayımlardan arındırılmış gerçek hata sayısını yansıtır.
 
 ```bash
 python ml/src/data/validation.py
@@ -124,7 +124,7 @@ python -m ml.src.data.build_dataset
 *Çıktılar*: `ml/data/processed/merged/account_level_eda_dataset.csv`, `ml/reports/cleaning/dataset_build_summary.json`
 
 ### Adım 4: Keşifsel Veri Analizi (EDA)
-Kapsamlı tanımlayıcı istatistikler ve bağımsızlık analizleri çalıştırır; Scipy kütüphanesi ile $\chi^2$ test istatistiği, serbestlik derecesi, p-değeri (`correction=False`) ve Cochran beklenen hücre frekansı varsayımlarını hesaplar. 12 adet görsel grafik ile detaylı markdown özet raporu oluşturur.
+Kapsamlı tanımlayıcı istatistikler ve bağımsızlık analizleri çalıştırır; Scipy kütüphanesi ile $\chi^2$ test istatistiği, serbestlik derecesi, p-değeri (`correction=False`) ve Cochran beklenen hücre frekansı varsayımlarını dinamik olarak hesaplar. 12 adet görsel grafik ile detaylı markdown özet raporu oluşturur.
 
 ```bash
 python ml/src/eda/eda.py
@@ -134,7 +134,7 @@ python -m ml.src.eda.eda
 *Çıktılar*: `ml/reports/eda/figures/*.png`, `ml/reports/eda/eda_summary_report.md`, `ml/reports/eda/eda_metrics.json`
 
 ### Adım 5: Otomatik Testlerin Çalıştırılması (Testing)
-Veri işleme, bütünlük ve birleştirme kurallarının doğruluğunu `pytest` ile test eder. Test paketi hem beklenen veri üzerindeki pozitif kontrolleri hem de bozulmuş veri senaryolarını yakalayan **14 negatif testi** ve EDA istatistik testlerini içerir (**Toplam 35 test**).
+Veri işleme, bütünlük ve birleştirme kurallarının doğruluğunu `pytest` ile test eder. Test paketi hem beklenen veri üzerindeki pozitif kontrolleri hem de bozulmuş veri senaryolarını yakalayan **18 negatif testi**, dinamik kardinalite testlerini ve Cochran varsayım ihlali senaryosunu içerir (**Toplam 42 test**).
 
 ```bash
 pytest ml/tests -v

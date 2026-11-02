@@ -304,3 +304,86 @@ def test_positive_nullable_region_null(validator: DataValidator) -> None:
     assert region_check.details["nullable"] is True
     assert region_check.details["null_count"] > 0
 
+
+def test_positive_dynamic_cardinality_10_rows(validator: DataValidator) -> None:
+    """Positive Test: 1:1 cardinality check passes on dynamic small dataset (10 accounts, 10 subs)."""
+    tables = {name: df.copy() for name, df in validator.load_processed_tables().items()}
+    tables["accounts"] = tables["accounts"].iloc[:10].copy()
+    acc_ids = set(tables["accounts"]["account_id"])
+    tables["subscriptions"] = tables["subscriptions"][tables["subscriptions"]["account_id"].isin(acc_ids)].copy()
+
+    coverage_checks = validator.validate_cross_table_coverage(tables)
+    card_check = next(c for c in coverage_checks if c.check_name == "coverage_account_subscription_1to1")
+
+    assert card_check.passed is True, "1:1 check must succeed dynamically on 10 accounts / 10 subs"
+    assert card_check.details["actual_accounts_count"] == 10
+    assert card_check.details["actual_subscriptions_count"] == 10
+    assert card_check.details["mismatch_count"] == 0
+    assert card_check.details["row_count_diff"] == 0
+
+
+def test_negative_duplicate_account_pk(validator: DataValidator) -> None:
+    """Negative Test 15: Catches duplicate account_id PK in accounts table."""
+    tables = {name: df.copy() for name, df in validator.load_processed_tables().items()}
+    dup_row = tables["accounts"].iloc[[0]].copy()
+    tables["accounts"] = pd.concat([tables["accounts"], dup_row], ignore_index=True)
+
+    coverage_checks = validator.validate_cross_table_coverage(tables)
+    card_check = next(c for c in coverage_checks if c.check_name == "coverage_account_subscription_1to1")
+
+    assert card_check.passed is False, "1:1 check must fail when accounts has duplicate account_id"
+    assert card_check.details["duplicate_accounts_count"] >= 1
+    assert card_check.details["mismatch_count"] >= 1
+
+
+def test_negative_cardinality_row_count_diff(validator: DataValidator) -> None:
+    """Negative Test 16: Catches row count discrepancy where an account has no subscription."""
+    tables = {name: df.copy() for name, df in validator.load_processed_tables().items()}
+    tables["subscriptions"] = tables["subscriptions"].iloc[:-1].copy()
+
+    coverage_checks = validator.validate_cross_table_coverage(tables)
+    card_check = next(c for c in coverage_checks if c.check_name == "coverage_account_subscription_1to1")
+
+    assert card_check.passed is False, "1:1 check must fail when row counts differ and an account is missing a sub"
+    assert card_check.details["row_count_diff"] == 1
+    assert card_check.details["missing_accounts_count"] == 1
+    assert card_check.details["mismatch_count"] >= 1
+
+
+def test_positive_plans_plan_name_valid(validator: DataValidator) -> None:
+    """Positive Test: Validates plans.plan_name values ('Starter', 'Growth', 'Scale', 'Enterprise')."""
+    tables = validator.load_processed_tables()
+    cat_checks = validator.validate_categoricals(tables)
+    plan_name_check = next(c for c in cat_checks if c.check_name == "categorical_domain_plans_plan_name")
+
+    assert plan_name_check.passed is True, "plans.plan_name must pass validation on clean dataset"
+    assert plan_name_check.details["nullable"] is False
+    assert plan_name_check.details["null_count"] == 0
+    assert len(plan_name_check.details["unexpected_values"]) == 0
+
+
+def test_negative_plans_plan_name_unexpected_value(validator: DataValidator) -> None:
+    """Negative Test 17: Catches unexpected category in plans.plan_name."""
+    tables = {name: df.copy() for name, df in validator.load_processed_tables().items()}
+    tables["plans"].loc[0, "plan_name"] = "Super_Enterprise_Plus"
+
+    cat_checks = validator.validate_categoricals(tables)
+    plan_name_check = next(c for c in cat_checks if c.check_name == "categorical_domain_plans_plan_name")
+
+    assert plan_name_check.passed is False, "plans.plan_name must fail when invalid plan name is present"
+    assert "Super_Enterprise_Plus" in plan_name_check.details["unexpected_values"]
+
+
+def test_negative_missing_mandatory_categorical_column(validator: DataValidator) -> None:
+    """Negative Test 18: Fails explicitly when a mandatory categorical column (plans.plan_name) is missing."""
+    tables = {name: df.copy() for name, df in validator.load_processed_tables().items()}
+    tables["plans"] = tables["plans"].drop(columns=["plan_name"])
+
+    cat_checks = validator.validate_categoricals(tables)
+    plan_name_check = next(c for c in cat_checks if c.check_name == "categorical_domain_plans_plan_name")
+
+    assert plan_name_check.passed is False, "Validation must fail when mandatory column is dropped"
+    assert plan_name_check.details["missing_column"] is True
+    assert "missing from table" in plan_name_check.message
+
+

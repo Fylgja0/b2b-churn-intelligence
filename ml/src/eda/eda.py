@@ -649,7 +649,11 @@ class SaasChurnEDA:
             p_val_analysis = "Ki-kare testleri hesaplanamamıştır."
 
         if violated_tests:
-            violated_vars = [var for var, t in metrics["region_independence_tests"].items() if not t.get("assumptions_met", False)]
+            violated_vars = [
+                var
+                for var, t in metrics["region_independence_tests"].items()
+                if t.get("status") == "success" and not t.get("assumptions_met", False)
+            ]
             assumption_analysis = (
                 f"⚠️ **Cochran Varsayım İhlali**: `{', '.join(violated_vars)}` değişken(ler)inde beklenen hücre frekansı "
                 f"5'in altına düşmüştür (E_ij < 5). Asimptotik Ki-kare testi bu değişkenler için güvenilir olmayabilir; "

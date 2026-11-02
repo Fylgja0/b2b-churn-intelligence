@@ -1,0 +1,272 @@
+{
+  "version": "1.0.0",
+  "observation_date": "2024-12-31",
+  "dataset_cutoff_date": "2025-12-31",
+  "prediction_horizons": {
+    "90d": {
+      "days": 90,
+      "window_end_date": "2025-03-31"
+    },
+    "180d": {
+      "days": 180,
+      "window_end_date": "2025-06-29"
+    },
+    "365d": {
+      "days": 365,
+      "window_end_date": "2025-12-31"
+    }
+  },
+  "source_info": {
+    "dataset_name": "SaaS Subscriptions & Customer Churn Dataset v1.0.0",
+    "license": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
+    "source_tables_dir": "/home/ahmetcan/b2b-churn-intelligence/ml/data/processed/tables"
+  },
+  "cohort_inclusion_rules": {
+    "rule": "started_at <= OBSERVATION_DATE and (ended_at IS NULL or ended_at > OBSERVATION_DATE)",
+    "observation_date": "2024-12-31",
+    "description": "Subscriptions active at the end of day on 2024-12-31.",
+    "exclusions": [
+      "Subscriptions ended on or before 2024-12-31 (already churned)",
+      "Subscriptions started after 2024-12-31 (not yet active)",
+      "Subscriptions with missing started_at date"
+    ]
+  },
+  "metadata_columns": [
+    {
+      "name": "subscription_id",
+      "data_type": "string",
+      "description": "Unique subscription primary key identifier. For record lineage only; must not be fed to ML models."
+    },
+    {
+      "name": "account_id",
+      "data_type": "string",
+      "description": "Unique account identifier associated with the subscription (1:1 in modeling cohort). For record lineage only."
+    }
+  ],
+  "feature_columns": [
+    {
+      "name": "region",
+      "data_type": "string",
+      "temporal_reliability": "assumed",
+      "source_table": "accounts",
+      "source_column": "region",
+      "description": "Geographical region of account (e.g. APAC, EMEA, LATAM). Nulls are preserved as true missing values.",
+      "missing_value_policy": "Preserve NULL without imputation. Unobserved confounders cannot be ruled out."
+    },
+    {
+      "name": "region_missing_flag",
+      "data_type": "integer",
+      "temporal_reliability": "assumed",
+      "source_table": "accounts",
+      "source_column": "region",
+      "description": "Binary flag indicating whether account region is missing (1 = missing, 0 = observed).",
+      "missing_value_policy": "Derived indicator (0/1)."
+    },
+    {
+      "name": "segment",
+      "data_type": "string",
+      "temporal_reliability": "assumed",
+      "source_table": "accounts",
+      "source_column": "segment",
+      "description": "Company size segment (SMB, Mid-Market, Enterprise). Assumed invariant across subscription lifecycle.",
+      "missing_value_policy": "Mandatory categorical, 0 missing values."
+    },
+    {
+      "name": "acquisition_channel",
+      "data_type": "string",
+      "temporal_reliability": "verified",
+      "source_table": "accounts",
+      "source_column": "acquisition_channel",
+      "description": "Initial marketing acquisition channel (e.g. organic, paid, partner, referral, outbound). Point-in-time invariant.",
+      "missing_value_policy": "Mandatory categorical, 0 missing values."
+    },
+    {
+      "name": "account_age_days_at_t0",
+      "data_type": "integer",
+      "temporal_reliability": "verified",
+      "source_table": "accounts",
+      "source_column": "created_at",
+      "description": "Number of elapsed calendar days from account creation (created_at) to observation date T0 (2024-12-31).",
+      "missing_value_policy": "Nullable Int64; 0 missing values in verified cohort."
+    },
+    {
+      "name": "account_created_at_missing_flag",
+      "data_type": "integer",
+      "temporal_reliability": "verified",
+      "source_table": "accounts",
+      "source_column": "created_at",
+      "description": "Binary indicator for missing account creation date (1 = missing, 0 = present).",
+      "missing_value_policy": "Derived indicator (0/1)."
+    },
+    {
+      "name": "subscription_tenure_days_at_t0",
+      "data_type": "integer",
+      "temporal_reliability": "verified",
+      "source_table": "subscriptions",
+      "source_column": "started_at",
+      "description": "Number of elapsed calendar days from subscription start (started_at) to observation date T0 (2024-12-31). Leakage-free tenure.",
+      "missing_value_policy": "Mandatory integer; non-negative."
+    },
+    {
+      "name": "subscription_start_month",
+      "data_type": "integer",
+      "temporal_reliability": "verified",
+      "source_table": "subscriptions",
+      "source_column": "started_at",
+      "description": "Calendar month (1-12) of subscription start date.",
+      "missing_value_policy": "Mandatory integer."
+    },
+    {
+      "name": "subscription_start_quarter",
+      "data_type": "integer",
+      "temporal_reliability": "verified",
+      "source_table": "subscriptions",
+      "source_column": "started_at",
+      "description": "Calendar quarter (1-4) of subscription start date.",
+      "missing_value_policy": "Mandatory integer."
+    },
+    {
+      "name": "plan_name",
+      "data_type": "string",
+      "temporal_reliability": "verified",
+      "source_table": "plans",
+      "source_column": "plan_name",
+      "description": "Subscribed pricing tier name (Starter, Growth, Scale, Enterprise). Verified invariant (no plan upgrade history).",
+      "missing_value_policy": "Mandatory categorical."
+    },
+    {
+      "name": "plan_monthly_price",
+      "data_type": "float",
+      "temporal_reliability": "verified",
+      "source_table": "plans",
+      "source_column": "monthly_price",
+      "description": "Standard monthly list price of the subscribed plan from plans table.",
+      "missing_value_policy": "Mandatory positive float."
+    },
+    {
+      "name": "plan_included_seats",
+      "data_type": "integer",
+      "temporal_reliability": "verified",
+      "source_table": "plans",
+      "source_column": "included_seats",
+      "description": "Number of user seats included by default in the subscribed plan tier.",
+      "missing_value_policy": "Mandatory positive integer."
+    }
+  ],
+  "target_columns": [
+    {
+      "name": "target_churn_90d",
+      "horizon_days": 90,
+      "window_end_date": "2025-03-31",
+      "formula": "1 if (2024-12-31 < ended_at <= 2025-03-31) else 0",
+      "description": "Subscription churned within 90 days after observation date."
+    },
+    {
+      "name": "target_churn_180d",
+      "horizon_days": 180,
+      "window_end_date": "2025-06-29",
+      "formula": "1 if (2024-12-31 < ended_at <= 2025-06-29) else 0",
+      "description": "Subscription churned within 180 days after observation date."
+    },
+    {
+      "name": "target_churn_365d",
+      "horizon_days": 365,
+      "window_end_date": "2025-12-31",
+      "formula": "1 if (2024-12-31 < ended_at <= 2025-12-31) else 0",
+      "description": "Subscription churned within 365 days after observation date."
+    }
+  ],
+  "excluded_columns": [
+    {
+      "name": "ended_at",
+      "category": "target_leakage",
+      "reason": "Directly encodes future cancellation event and timing occurring after T0. Only used to define cohort and target labels."
+    },
+    {
+      "name": "status",
+      "category": "target_leakage",
+      "reason": "Encodes final lifecycle status of subscription at dataset cutoff (2025-12-31), contaminating T0 prediction with future state."
+    },
+    {
+      "name": "churn",
+      "category": "target_leakage",
+      "reason": "EDA churn label based on status == 'cancelled' over full 2023-2025 period; constitutes direct label leakage."
+    },
+    {
+      "name": "tenure_days",
+      "category": "target_leakage",
+      "reason": "Calculated in EDA using ended_at - started_at for cancelled accounts, which leaks post-T0 survival duration."
+    },
+    {
+      "name": "seats",
+      "category": "unverified_temporal",
+      "reason": "Purchased seats count lacks temporal event audit logging. Documentation does not verify whether value is fixed at start or reflects post-T0 expansions."
+    },
+    {
+      "name": "mrr",
+      "category": "unverified_temporal",
+      "reason": "Contracted MRR lacks historical change tracking. Unverified whether value reflects T0 status or subsequent modifications."
+    },
+    {
+      "name": "additional_seats",
+      "category": "unverified_temporal",
+      "reason": "Derived from seats - included_seats; subject to the same temporal unverified status as seats."
+    },
+    {
+      "name": "total_invoices",
+      "category": "low_population_coverage",
+      "reason": "Invoices cover only ~6% of subscriptions. Aggregates in EDA cover post-T0 invoices, creating leakage and severe population bias."
+    },
+    {
+      "name": "total_payment_attempts",
+      "category": "low_population_coverage",
+      "reason": "Payment data restricted to 120 subscriptions. Excluded from baseline feature matrix to maintain generalizability."
+    },
+    {
+      "name": "total_payment_failures",
+      "category": "low_population_coverage",
+      "reason": "Restricted billing cohort feature. Excluded from baseline matrix; reserved for specialized billing-cohort experiments."
+    },
+    {
+      "name": "payment_failure_rate",
+      "category": "low_population_coverage",
+      "reason": "Restricted billing cohort feature. Excluded from baseline matrix."
+    },
+    {
+      "name": "total_amount_billed",
+      "category": "low_population_coverage",
+      "reason": "Restricted billing cohort feature. Excluded from baseline matrix."
+    },
+    {
+      "name": "total_amount_paid",
+      "category": "low_population_coverage",
+      "reason": "Restricted billing cohort feature. Excluded from baseline matrix."
+    },
+    {
+      "name": "has_billing_data",
+      "category": "low_population_coverage",
+      "reason": "Cohort membership indicator. Excluded from baseline feature matrix."
+    },
+    {
+      "name": "has_payment_data",
+      "category": "low_population_coverage",
+      "reason": "Cohort membership indicator. Excluded from baseline feature matrix."
+    },
+    {
+      "name": "account_id",
+      "category": "identifier_metadata",
+      "reason": "Record tracking identifier. Excluded from feature space to prevent arbitrary ID memorization."
+    },
+    {
+      "name": "subscription_id",
+      "category": "identifier_metadata",
+      "reason": "Primary key identifier. Excluded from feature space to prevent arbitrary ID memorization."
+    }
+  ],
+  "missing_value_policy": {
+    "region": "Keep raw NULL (321 rows in cohort). Do not impute with mean/mode/synthetic categories. Indicator flag created.",
+    "region_missing_flag": "1 when region is NULL, 0 otherwise.",
+    "created_at": "Keep raw date; flag created if missing. 0 missing in cohort.",
+    "categorical_handling": "String values preserved without one-hot or ordinal encoding."
+  }
+}

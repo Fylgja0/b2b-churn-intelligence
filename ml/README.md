@@ -24,16 +24,19 @@ ml/
 │       │   ├── payments.csv
 │       │   ├── plans.csv
 │       │   └── subscriptions.csv
-│       └── merged/                     # Analiz amaçlı birleştirilmiş veri seti (1 satır = 1 hesap/abone)
-│           └── account_level_eda_dataset.csv
+│       ├── merged/                     # Analiz amaçlı birleştirilmiş veri seti (1 satır = 1 hesap/abone)
+│       │   └── account_level_eda_dataset.csv
+│       └── modeling/                   # Point-in-time güvenli modelleme veri seti (T0=2024-12-31)
+│           └── churn_modeling_dataset.csv
 ├── src/
 │   ├── data/
 │   │   ├── preprocess.py               # Veri ön işleme, tekilleştirme, tip ve format standardizasyonu
-│   │   ├── validation.py               # Güçlendirilmiş bütünlük, PK/FK, kural, tarih ve kapsam testleri (38 kontrol)
+│   │   ├── validation.py               # Güçlendirilmiş bütünlük, PK/FK, kural, tarih ve kapsam testleri (39 kontrol)
 │   │   └── build_dataset.py            # Çoğalmayı önleyen 2 aşamalı birleştirme pipeline'ı
 │   ├── eda/
 │   │   └── eda.py                      # İstatistiksel analiz ve 12 adet görselleştirme üretici
-│   ├── features/                       # (Gelecek geliştirme) Özellik mühendisliği
+│   ├── features/
+│   │   └── build_features.py           # Zaman noktası tabanlı sızıntısız özellik mühendisliği ve kohort oluşturucu
 │   ├── models/                         # (Gelecek geliştirme) ML modelleri
 │   └── evaluation/                     # (Gelecek geliştirme) Model değerlendirme
 ├── reports/
@@ -59,12 +62,17 @@ ml/
 │           ├── 10_monthly_churn_trend.png
 │           ├── 11_payment_failures_vs_churn_cohort.png
 │           └── 12_invoice_coverage_breakdown.png
+│   └── modeling/                       # Modelleme kohortu, hedef dağılımı ve feature manifest raporları
+│       ├── modeling_dataset_report.md
+│       ├── modeling_dataset_summary.json
+│       └── feature_manifest.json
 ├── artifacts/                          # İleride eğitilecek modeller ve scaler nesneleri için
-└── tests/                              # Pytest test paketi (42 adet pozitif ve negatif test)
+└── tests/                              # Pytest test paketi (58 adet pozitif ve negatif test)
     ├── test_preprocess.py              # Ham veri varlığı, temizlik, tekilleştirme ve tip testleri (5 test)
     ├── test_validation.py              # 39 doğrulama kontrolü, dinamik kardinalite ve 18 negatif test (28 test)
     ├── test_build_dataset.py           # 2 aşamalı birleştirme ve tane seviyesi testleri (4 test)
-    └── test_eda.py                     # Ki-kare, Cochran kuralı, Cochran ihlali ve dejenere matris testleri (5 test)
+    ├── test_eda.py                     # Ki-kare, Cochran kuralı, Cochran ihlali ve dejenere matris testleri (6 test)
+    └── test_features.py                # Kohort, hedef pencereleri, leakage koruması ve zamansal testler (15 test)
 ```
 
 ---
@@ -133,8 +141,18 @@ python -m ml.src.eda.eda
 ```
 *Çıktılar*: `ml/reports/eda/figures/*.png`, `ml/reports/eda/eda_summary_report.md`, `ml/reports/eda/eda_metrics.json`
 
-### Adım 5: Otomatik Testlerin Çalıştırılması (Testing)
-Veri işleme, bütünlük ve birleştirme kurallarının doğruluğunu `pytest` ile test eder. Test paketi hem beklenen veri üzerindeki pozitif kontrolleri hem de bozulmuş veri senaryolarını yakalayan **18 negatif testi**, dinamik kardinalite testlerini ve Cochran varsayım ihlali senaryosunu içerir (**Toplam 42 test**).
+### Adım 5: Zaman Noktası Tabanlı Özellik Mühendisliği (Feature Engineering)
+Tahminin yapıldığı an olan $T_0$ (`2024-12-31`) itibarıyla aktif olan 1.242 aboneliği kohorta dahil eder, hedef sızıntısını (target leakage) engelleyerek 90, 180 ve 365 günlük ileriye dönük churn hedeflerini (`target_churn_90d`, `target_churn_180d`, `target_churn_365d`) üretir, yalnızca $T_0$ anında bilinebilen point-in-time güvenli öznitelikleri türetir ve detaylı dokümantasyon manifestini oluşturur.
+
+```bash
+python ml/src/features/build_features.py
+# veya modül olarak:
+python -m ml.src.features.build_features
+```
+*Çıktılar*: `ml/data/processed/modeling/churn_modeling_dataset.csv`, `ml/reports/modeling/modeling_dataset_report.md`, `ml/reports/modeling/modeling_dataset_summary.json`, `ml/reports/modeling/feature_manifest.json`
+
+### Adım 6: Otomatik Testlerin Çalıştırılması (Testing)
+Veri işleme, bütünlük ve birleştirme kurallarının yanı sıra EDA varsayım kontrolleri ve zaman noktası tabanlı modelleme özellik mühendisliğini `pytest` ile test eder. Test paketi pozitif ve negatif kontroller, dinamik kardinalite testleri, Cochran varsayım denetimleri, kohort sınır koşulları ve leakage izolasyon testlerini içerir (**Toplam 58 test**).
 
 ```bash
 pytest ml/tests -v

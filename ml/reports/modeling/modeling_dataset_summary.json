@@ -1,0 +1,79 @@
+{
+  "version": "1.0.0",
+  "observation_date": "2024-12-31",
+  "dataset_cutoff_date": "2025-12-31",
+  "cohort_statistics": {
+    "total_subscriptions": 2000,
+    "included_in_cohort": 1242,
+    "excluded_ended_on_or_before_t0": 186,
+    "excluded_started_after_t0": 571,
+    "excluded_missing_started_at": 1
+  },
+  "status_ended_at_consistency": {
+    "active_with_ended_at_count": 0,
+    "cancelled_with_null_ended_at_count": 0,
+    "inconsistencies_found": false
+  },
+  "target_distributions": [
+    {
+      "horizon_days": 90,
+      "window_end_date": "2025-03-31",
+      "positive_count": 56,
+      "negative_count": 1186,
+      "positive_rate_pct": 4.51
+    },
+    {
+      "horizon_days": 180,
+      "window_end_date": "2025-06-29",
+      "positive_count": 108,
+      "negative_count": 1134,
+      "positive_rate_pct": 8.7
+    },
+    {
+      "horizon_days": 365,
+      "window_end_date": "2025-12-31",
+      "positive_count": 182,
+      "negative_count": 1060,
+      "positive_rate_pct": 14.65
+    }
+  ],
+  "billing_coverage_at_t0": {
+    "invoices_at_t0": 917,
+    "distinct_subscriptions_invoiced_at_t0": 90,
+    "payments_at_t0": 946,
+    "distinct_subscriptions_paid_at_t0": 88,
+    "cohort_subscriptions_with_invoices_at_t0": 78,
+    "cohort_subscriptions_with_payments_at_t0": 76,
+    "churn_365d_subscriptions_with_invoices_at_t0": 11
+  },
+  "dataset_shape": [
+    1242,
+    17
+  ],
+  "columns": [
+    "subscription_id",
+    "account_id",
+    "region",
+    "region_missing_flag",
+    "segment",
+    "acquisition_channel",
+    "account_age_days_at_t0",
+    "account_created_at_missing_flag",
+    "subscription_tenure_days_at_t0",
+    "subscription_start_month",
+    "subscription_start_quarter",
+    "plan_name",
+    "plan_monthly_price",
+    "plan_included_seats",
+    "target_churn_90d",
+    "target_churn_180d",
+    "target_churn_365d"
+  ],
+  "feature_counts": {
+    "metadata_columns": 2,
+    "feature_columns": 12,
+    "target_columns": 3,
+    "total_columns": 17
+  },
+  "output_csv_path": "/home/ahmetcan/b2b-churn-intelligence/ml/data/processed/modeling/churn_modeling_dataset.csv"
+}

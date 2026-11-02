@@ -158,3 +158,80 @@ def test_chi2_cochran_assumption_violation_scenario(eda_analyzer: SaasChurnEDA) 
     assert 0.0 <= seg_res["p_value"] <= 1.0
     assert seg_res["degrees_of_freedom"] >= 1
 
+
+def test_cochran_violation_reporting_excludes_uncomputed_tests(tmp_path: Path) -> None:
+    """
+    Verifies that write_reports only lists variables with status == 'success' and
+    assumptions_met == False under Cochran assumption violation,
+    excluding uncomputed or errored tests.
+    """
+    analyzer = SaasChurnEDA(reports_dir=tmp_path)
+    sample_metrics = {
+        "total_accounts": 100,
+        "active_subscriptions": 80,
+        "churned_subscriptions": 20,
+        "overall_churn_rate_pct": 20.0,
+        "plan_metrics": {},
+        "segment_metrics": {},
+        "region_metrics": {},
+        "channel_metrics": {},
+        "billing_cohort_metrics": {
+            "total_invoiced_subs": 120,
+            "subs_with_payment_failures": 30,
+            "churn_rate_with_failure": 33.3,
+            "churn_rate_without_failure": 10.0,
+        },
+        "region_independence_tests": {
+            "valid_met": {
+                "status": "success",
+                "chi2_statistic": 1.5,
+                "degrees_of_freedom": 1,
+                "p_value": 0.22,
+                "min_expected_frequency": 10.0,
+                "cells_expected_lt_5": 0,
+                "total_cells": 4,
+                "assumptions_met": True,
+            },
+            "valid_violated": {
+                "status": "success",
+                "chi2_statistic": 4.2,
+                "degrees_of_freedom": 2,
+                "p_value": 0.12,
+                "min_expected_frequency": 2.5,
+                "cells_expected_lt_5": 1,
+                "total_cells": 6,
+                "assumptions_met": False,
+            },
+            "uncomputed_col": {
+                "status": "cannot_compute",
+                "error": "Degenerate table",
+                "chi2_statistic": None,
+                "degrees_of_freedom": None,
+                "p_value": None,
+                "min_expected_frequency": None,
+                "cells_expected_lt_5": None,
+                "total_cells": None,
+                "assumptions_met": False,
+            },
+            "errored_col": {
+                "status": "error",
+                "error": "Division by zero",
+                "chi2_statistic": None,
+                "degrees_of_freedom": None,
+                "p_value": None,
+                "min_expected_frequency": None,
+                "cells_expected_lt_5": None,
+                "total_cells": None,
+                "assumptions_met": False,
+            },
+        },
+    }
+    analyzer.write_reports(sample_metrics)
+    report_text = (tmp_path / "eda_summary_report.md").read_text(encoding="utf-8")
+    assert "Cochran Varsayım İhlali" in report_text
+    assert "`valid_violated`" in report_text
+    violation_section = report_text.split("Cochran Varsayım İhlali")[1].split("\n\n")[0]
+    assert "`uncomputed_col`" not in violation_section
+    assert "`errored_col`" not in violation_section
+    assert "`valid_met`" not in violation_section
+

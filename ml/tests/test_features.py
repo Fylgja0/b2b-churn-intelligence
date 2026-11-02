@@ -362,7 +362,7 @@ def test_deterministic_ordering_and_reproducibility(
     # Re-run pipeline and compare
     clean_tables = feature_pipeline.load_clean_tables()
     cohort_df, _ = feature_pipeline.create_modeling_cohort(clean_tables["subscriptions"])
-    horizons = feature_pipeline.validate_dates_and_censoring(clean_tables)
+    horizons, _ = feature_pipeline.validate_dates_and_censoring(clean_tables)
     cohort_targets, _ = feature_pipeline.compute_target_variables(cohort_df, horizons)
     reproduced_df = feature_pipeline.engineer_features(
         cohort_targets, clean_tables["accounts"], clean_tables["plans"]
@@ -399,3 +399,115 @@ def test_negative_tenure_or_age_raises_validation_error(feature_pipeline: Featur
 
     with pytest.raises(ValueError, match="Negative subscription tenure detected"):
         feature_pipeline.engineer_features(invalid_subs, accounts, plans)
+
+
+def test_plan_features_temporal_reliability_assumed(
+    modeling_dataset: pd.DataFrame, feature_manifest: dict
+) -> None:
+    """
+    Verifies that plan_name, plan_monthly_price, and plan_included_seats are classified
+    as 'assumed' in the manifest, with explicit explanations of missing historical logs,
+    while remaining present in the modeling feature matrix.
+    """
+    feature_dict = {f["name"]: f for f in feature_manifest["feature_columns"]}
+    plan_cols = ["plan_name", "plan_monthly_price", "plan_included_seats"]
+
+    for col in plan_cols:
+        assert col in modeling_dataset.columns, f"{col} must remain present in modeling dataset"
+        assert col in feature_dict, f"{col} must be in manifest feature_columns"
+        feat = feature_dict[col]
+        assert feat["temporal_reliability"] == "assumed", (
+            f"{col} temporal_reliability must be 'assumed' due to lack of historical plan change logs"
+        )
+        # Check that description documents the assumption
+        assert "assumed" in feat["description"].lower() or "invariant" in feat["description"].lower()
+
+
+def test_other_features_temporal_reliability_preserved(feature_manifest: dict) -> None:
+    """Verifies that non-plan feature classifications remain appropriately classified."""
+    feature_dict = {f["name"]: f for f in feature_manifest["feature_columns"]}
+
+    # Verified features
+    verified_cols = [
+        "acquisition_channel",
+        "account_age_days_at_t0",
+        "account_created_at_missing_flag",
+        "subscription_tenure_days_at_t0",
+        "subscription_start_month",
+        "subscription_start_quarter",
+    ]
+    for col in verified_cols:
+        assert feature_dict[col]["temporal_reliability"] == "verified", f"{col} must remain 'verified'"
+
+    # Assumed features
+    assumed_cols = ["region", "region_missing_flag", "segment"]
+    for col in assumed_cols:
+        assert feature_dict[col]["temporal_reliability"] == "assumed", f"{col} must remain 'assumed'"
+
+
+def test_feature_metadata_target_counts_and_dataset_shape(
+    modeling_dataset: pd.DataFrame, pipeline_summary: dict
+) -> None:
+    """Verifies that the modeling dataset retains exact counts: 2 metadata, 12 features, 3 targets (1,242 x 17)."""
+    assert len(modeling_dataset) == 1242
+    assert len(modeling_dataset.columns) == 17
+    assert pipeline_summary["feature_counts"]["metadata_columns"] == 2
+    assert pipeline_summary["feature_counts"]["feature_columns"] == 12
+    assert pipeline_summary["feature_counts"]["target_columns"] == 3
+    assert pipeline_summary["feature_counts"]["total_columns"] == 17
+
+
+def test_horizon_exceeding_declared_cutoff_raises_error(clean_tables: dict[str, pd.DataFrame]) -> None:
+    """Verifies that configuring a horizon exceeding declared cutoff date raises ValueError."""
+    # 400 days from 2024-12-31 is 2026-02-04, which exceeds 2025-12-31
+    pipeline_invalid = FeaturePipeline(horizons_days=[90, 180, 400])
+    with pytest.raises(ValueError, match="exceeds declared dataset coverage end date"):
+        pipeline_invalid.validate_dates_and_censoring(clean_tables)
+
+
+def test_observed_max_event_before_cutoff_does_not_raise_error(
+    feature_pipeline: FeaturePipeline, clean_tables: dict[str, pd.DataFrame]
+) -> None:
+    """
+    Verifies that observed max ended_at being 2025-12-30 (1 day before cutoff 2025-12-31)
+    does NOT trigger a false failure, distinguishing observed events from declared coverage.
+    """
+    horizons, cov = feature_pipeline.validate_dates_and_censoring(clean_tables)
+    assert cov.coverage_end_date == "2025-12-31"
+    assert cov.observed_max_ended_at == "2025-12-30"
+    assert cov.observed_max_ended_at != cov.coverage_end_date
+    assert cov.coverage_basis == "declared_by_source"
+    assert cov.independently_verified is False
+
+
+def test_source_coverage_manifest_structure_and_assumptions(feature_manifest: dict) -> None:
+    """Verifies that source_coverage in manifest separates declared coverage from observed event bounds."""
+    assert "source_coverage" in feature_manifest
+    cov = feature_manifest["source_coverage"]
+
+    assert cov["coverage_start_date"] == "2023-01-01"
+    assert cov["coverage_end_date"] == "2025-12-31"
+    assert cov["coverage_basis"] == "declared_by_source"
+    assert cov["independently_verified"] is False
+    assert cov["observed_max_started_at"] == "2025-10-25"
+    assert cov["observed_max_ended_at"] == "2025-12-30"
+    assert "label_observability_assumption" in cov
+    assert "right-censoring" in cov["label_observability_assumption"].lower()
+
+
+def test_reports_and_manifests_contain_no_absolute_paths(pipeline_summary: dict) -> None:
+    """Verifies that all generated reports, manifest, and summary files contain only portable relative paths."""
+    summary_path = DEFAULT_REPORTS_DIR / "modeling_dataset_summary.json"
+    manifest_path = DEFAULT_REPORTS_DIR / "feature_manifest.json"
+    report_path = DEFAULT_REPORTS_DIR / "modeling_dataset_report.md"
+
+    for p in [summary_path, manifest_path, report_path]:
+        content = p.read_text(encoding="utf-8")
+        assert "/home/" not in content, f"Absolute path found in {p.name}"
+        assert "/Users/" not in content, f"macOS absolute path found in {p.name}"
+        assert "C:\\" not in content, f"Windows absolute path found in {p.name}"
+
+    # Verify summary relative path fields
+    assert pipeline_summary["output_csv_path"] == "ml/data/processed/modeling/churn_modeling_dataset.csv"
+    assert pipeline_summary["manifest_path"] == "ml/reports/modeling/feature_manifest.json"
+    assert pipeline_summary["source_tables_dir"] == "ml/data/processed/tables"

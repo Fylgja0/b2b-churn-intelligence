@@ -67,12 +67,12 @@ ml/
 │       ├── modeling_dataset_summary.json
 │       └── feature_manifest.json
 ├── artifacts/                          # İleride eğitilecek modeller ve scaler nesneleri için
-└── tests/                              # Pytest test paketi (58 adet pozitif ve negatif test)
+└── tests/                              # Pytest test paketi (65 adet pozitif ve negatif test)
     ├── test_preprocess.py              # Ham veri varlığı, temizlik, tekilleştirme ve tip testleri (5 test)
     ├── test_validation.py              # 39 doğrulama kontrolü, dinamik kardinalite ve 18 negatif test (28 test)
     ├── test_build_dataset.py           # 2 aşamalı birleştirme ve tane seviyesi testleri (4 test)
     ├── test_eda.py                     # Ki-kare, Cochran kuralı, Cochran ihlali ve dejenere matris testleri (6 test)
-    └── test_features.py                # Kohort, hedef pencereleri, leakage koruması ve zamansal testler (15 test)
+    └── test_features.py                # Kohort, hedef pencereleri, leakage koruması ve zamansal testler (22 test)
 ```
 
 ---
@@ -142,7 +142,7 @@ python -m ml.src.eda.eda
 *Çıktılar*: `ml/reports/eda/figures/*.png`, `ml/reports/eda/eda_summary_report.md`, `ml/reports/eda/eda_metrics.json`
 
 ### Adım 5: Zaman Noktası Tabanlı Özellik Mühendisliği (Feature Engineering)
-Tahminin yapıldığı an olan $T_0$ (`2024-12-31`) itibarıyla aktif olan 1.242 aboneliği kohorta dahil eder, hedef sızıntısını (target leakage) engelleyerek 90, 180 ve 365 günlük ileriye dönük churn hedeflerini (`target_churn_90d`, `target_churn_180d`, `target_churn_365d`) üretir, yalnızca $T_0$ anında bilinebilen point-in-time güvenli öznitelikleri türetir ve detaylı dokümantasyon manifestini oluşturur.
+Tahminin yapıldığı an olan $T_0$ (`2024-12-31`) itibarıyla aktif olan 1.242 aboneliği kohorta dahil eder, hedef sızıntısını (target leakage) engellemek amacıyla doğrudan sızıntı alanlarını (`ended_at`, `status`, `churn`, `tenure_days`) hariç tutarak 90, 180 ve 365 günlük ileriye dönük churn hedeflerini (`target_churn_90d`, `target_churn_180d`, `target_churn_365d`) üretir; zamansal güvenilirliği doğrulanmış veya açık iş varsayımlarıyla sabit kabul edilmiş öznitelikleri türetir ve taşınabilir göreli yollarla detaylı dokümantasyon manifestini oluşturur.
 
 ```bash
 python ml/src/features/build_features.py
@@ -152,7 +152,7 @@ python -m ml.src.features.build_features
 *Çıktılar*: `ml/data/processed/modeling/churn_modeling_dataset.csv`, `ml/reports/modeling/modeling_dataset_report.md`, `ml/reports/modeling/modeling_dataset_summary.json`, `ml/reports/modeling/feature_manifest.json`
 
 ### Adım 6: Otomatik Testlerin Çalıştırılması (Testing)
-Veri işleme, bütünlük ve birleştirme kurallarının yanı sıra EDA varsayım kontrolleri ve zaman noktası tabanlı modelleme özellik mühendisliğini `pytest` ile test eder. Test paketi pozitif ve negatif kontroller, dinamik kardinalite testleri, Cochran varsayım denetimleri, kohort sınır koşulları ve leakage izolasyon testlerini içerir (**Toplam 58 test**).
+Veri işleme, bütünlük ve birleştirme kurallarının yanı sıra EDA varsayım kontrolleri ve zaman noktası tabanlı modelleme özellik mühendisliğini `pytest` ile test eder. Test paketi pozitif ve negatif kontroller, dinamik kardinalite testleri, Cochran varsayım denetimleri, kohort sınır koşulları, leakage izolasyon testleri ve taşınabilirlik kontrollerini içerir (**Toplam 65 test**).
 
 ```bash
 pytest ml/tests -v

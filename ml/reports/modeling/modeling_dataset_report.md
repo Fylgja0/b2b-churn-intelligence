@@ -2,16 +2,17 @@
 
 ## 1. Modelleme Senaryosu ve Yönetici Özeti
 
-Bu çalışma, B2B SaaS müşteri kaybı (*Customer Churn*) tahmin modellerinin eğitilmesi için gerekli olan **zaman noktasına duyarlı (Point-in-Time Safe)** modelleme veri setinin oluşturulmasını kapsamaktadır. Makine öğrenmesi modellerinde en sık karşılaşılan metodolojik tuzak olan **Hedef Sızıntısı (Target Leakage)** riskini tamamen bertaraf etmek amacıyla, tüm öznitelikler yalnızca tahmin anında ($T_0$) bilinebilecek bilgilerden türetilmiştir.
+Bu çalışma, B2B SaaS müşteri kaybı (*Customer Churn*) tahmin modellerinin eğitilmesi için gerekli olan **zaman noktasına duyarlı (Point-in-Time Safe)** modelleme veri setinin oluşturulmasını ve metodolojik dokümantasyonunu kapsamaktadır. Makine öğrenmesi modellerinde en sık karşılaşılan metodolojik tuzaklardan biri olan **Hedef Sızıntısı (Target Leakage)** riskini azaltmak amacıyla, öznitelikler tahmin anında ($T_0$) bilinebilecek veya iş mantığı altında sabit kaldığı varsayılan bilgilerden türetilmiştir.
 
 - **Gözlem Tarihi ($T_0$ / Observation Date)**: `2024-12-31` (Günün sonu)
-- **Resmî Veri Kesim Tarihi (Dataset Cutoff Date)**: `2025-12-31`
+- **Beyan Edilen Veri Kapsamı Bitiş Tarihi**: `2025-12-31`
 - **Modelleme Kohortu Büyüklüğü**: 1,242 aktif abonelik
-- **Üretilen Veri Seti**: `/home/ahmetcan/b2b-churn-intelligence/ml/data/processed/modeling/churn_modeling_dataset.csv`
+- **Üretilen Veri Seti**: `ml/data/processed/modeling/churn_modeling_dataset.csv`
+- **Özellik Manifestosu**: `ml/reports/modeling/feature_manifest.json`
 
 ---
 
-## 2. Zaman Noktası ($T_0$) ve Tahmin Ufukları (Prediction Horizons)
+## 2. Zaman Noktası ($T_0$), Tahmin Ufukları ve Veri Kapsamı
 
 Modelleme kohortu, 31 Aralık 2024 gecesi itibarıyla aktif olan müşterilerden oluşturulmuştur. Aynı gözlem anı için üç farklı karar penceresini temsil eden ileriye dönük ikili churn hedef değişkenleri üretilmiştir:
 
@@ -23,6 +24,21 @@ Modelleme kohortu, 31 Aralık 2024 gecesi itibarıyla aktif olan müşterilerden
 
 > [!NOTE]
 > **Pencere Bitiş Tarihleri**: 2025 yılı artık yıl değildir (Şubat 28 gündür). 90 gün bitişi 31 Mart 2025, 180 gün bitişi 29 Haziran 2025 ve 365 gün bitişi 31 Aralık 2025'tir. Pencerelerin bitiş günlerinde gerçekleşen churn olayları hedef pozitif olarak sayılmıştır.
+
+### 2.1. Beyan Edilen Veri Kapsamı ile Satır Bazlı Gözlem Ayrımı
+
+- **Veri Kaynağı**: *Analytics Engineering – SaaS Subscriptions & Customer Churn Dataset v1.0.0*
+- **Beyan Edilen Kapsam**: `2023-01-01` ile `2025-12-31` arası.
+- **Kapsam Dayanağı (`coverage_basis`)**: `declared_by_source` (Veri kaynağı tarafından beyan edilmiş takvim aralığı).
+- **Bağımsız Doğrulama (`independently_verified`)**: `false` (Dış bağımsız denetim logu veya transaction watermark bulunmamaktadır).
+- **Satır Düzeyinde Gözlemlenen Maksimum Başlangıç Tarihi (`observed_max_started_at`)**: `2025-10-25`
+- **Satır Düzeyinde Gözlemlenen Maksimum Bitiş Tarihi (`observed_max_ended_at`)**: `2025-12-30`
+
+> [!IMPORTANT]
+> **Gözlem Bütünlüğü ve Negatif Hedef Etiketleme Varsayımı**:
+> - Kaynak CSV dosyalarında bağımsız extraction timestamp veya veri akışı bütünlük watermark'ı yer almamaktadır.
+> - Tablodaki maksimum `ended_at` değerinin `2025-12-30` olması, veri kesim tarihi olan `2025-12-31` gününde iptal gerçekleşmemiş olmasından kaynaklanabilir; tek başına bir eksiklik kanıtı değildir.
+> - Ancak `ended_at` değeri `NULL` olan (veya hedef penceresinden sonra sonlanan) aboneliklerin negatif (0) olarak etiketlenmesi, veri kaynağının 2025 yılı boyunca tüm iptal olaylarını eksiksiz yakaladığı (**sağdan sansürleme olmadığı**) varsayımına dayanmaktadır.
 
 ---
 
@@ -66,7 +82,7 @@ Modelleme kohortu üzerinde hesaplanan hedef değişken dağılımları:
 
 ---
 
-## 5. Point-in-Time Güvenli Özellikler (Feature Engineering)
+## 5. Point-in-Time Özellikler (Feature Engineering)
 
 Modelleme veri setine dahil edilen tüm öznitelikler $T_0$ anı itibarıyla dondurulmuştur:
 
@@ -81,9 +97,9 @@ Modelleme veri setine dahil edilen tüm öznitelikler $T_0$ anı itibarıyla don
 | `subscription_tenure_days_at_t0` | `integer` | `subscriptions` | Verified | $T_0$ anındaki abonelik kıdemi ($T_0 - \text{started\_at}$). Hedef sızıntısından arındırılmıştır. |
 | `subscription_start_month` | `integer` | `subscriptions` | Verified | Abonelik başlangıç ayı (1 - 12). Mevsimsellik göstergesi. |
 | `subscription_start_quarter` | `integer` | `subscriptions` | Verified | Abonelik başlangıç çeyreği (1 - 4). |
-| `plan_name` | `string` | `plans` | Verified | Abone olunan plan adı (Starter, Growth, Scale, Enterprise). |
-| `plan_monthly_price` | `float` | `plans` | Verified | Planın aylık liste fiyatı (`monthly_price`). |
-| `plan_included_seats` | `integer` | `plans` | Verified | Plan kapsamında sunulan dahil koltuk sayısı (`included_seats`). |
+| `plan_name` | `string` | `plans` | Assumed | Abone olunan plan adı (Starter, Growth, Scale, Enterprise). Değişmediği varsayılmıştır. |
+| `plan_monthly_price` | `float` | `plans` | Assumed | Planın aylık liste fiyatı (`monthly_price`). Fiyatın geçmişte değişmediği varsayılmıştır. |
+| `plan_included_seats` | `integer` | `plans` | Assumed | Plan dahilindeki koltuk sayısı (`included_seats`). Paket kapsamının değişmediği varsayılmıştır. |
 
 ---
 
@@ -91,8 +107,15 @@ Modelleme veri setine dahil edilen tüm öznitelikler $T_0$ anı itibarıyla don
 
 Kaynak dokümantasyon ve veri mimarisi incelemeleri sonucunda özelliklerin zaman içindeki davranışları üç grupta sınıflandırılmıştır:
 
-1. **Doğrulanmış (Verified)**: Zamansal olarak sabit olduğu kesin olan veya doğrudan $T_0$ ile geçmiş tarihler arasındaki farktan hesaplanan özellikler (`acquisition_channel`, `account_age_days_at_t0`, `subscription_tenure_days_at_t0`, `subscription_start_month`, `subscription_start_quarter`, plan özellikleri).
-2. **Varsayıma Dayalı (Assumed)**: Kaynak dokümantasyonda geçmiş logu tutulmayan ancak iş mantığı gereği abonelik boyunca değişmediği varsayılan özellikler (`region`, `segment`). Şirketlerin $T_0$ öncesinde büyüyüp segment değiştirip değiştirmediği kaynak veride teyit edilememektedir.
+1. **Doğrulanmış (Verified)**: Zamansal olarak sabit olduğu kesin olan veya doğrudan $T_0$ ile geçmiş tarihler arasındaki farktan hesaplanan özellikler:
+   - `acquisition_channel`: Müşterinin ilk edinim kanalı, tanımı gereği zamanla değişmeyen başlangıç olayıdır.
+   - `account_age_days_at_t0`, `account_created_at_missing_flag`: $T_0$ ile `created_at` arasındaki matematiksel gün farkı.
+   - `subscription_tenure_days_at_t0`: $T_0$ ile `started_at` arasındaki matematiksel gün farkı.
+   - `subscription_start_month`, `subscription_start_quarter`: Başlangıç tarihinin takvim bileşenleri.
+2. **Varsayıma Dayalı (Assumed)**: Kaynak veride geçmiş logu veya versiyonlama tutulmayan ancak iş mantığı gereği abonelik boyunca değişmediği varsayılan özellikler:
+   - `region`, `region_missing_flag`: Müşteri şirket merkezinin abonelik süresince değişmediği varsayılmıştır.
+   - `segment`: Şirket ölçeğinin (SMB, Mid-Market, Enterprise) $T_0$ öncesinde değişmediği varsayılmıştır.
+   - `plan_name`, `plan_monthly_price`, `plan_included_seats`: Kaynak veride plan versiyonlaması veya geçmiş fiyatlandırma kayıtları bulunmamaktadır. Güncel plan kataloğundaki liste fiyatı ve dahil koltuk adedinin abonelik dönemi boyunca sabit kaldığı varsayılmıştır; fiyatların veya paket kapsamının geçmişte değişmiş olma riski metodolojik bir sınırlılık olarak değerlendirilmelidir.
 3. **Doğrulanamayan (Unverified)**: $T_0$ tarihindeki değerini geçmişe dönük olarak garanti edemediğimiz alanlar (`seats`, `mrr`, `additional_seats`). Bu alanlar model veri setinden **tamamen çıkarılmıştır**.
 
 ---
@@ -146,3 +169,4 @@ EDA aşamasında tespit edilen fatura ve ödeme verisi kapsamındaki kısıt, $T
 1. **Sınıf Dengesizliği Mücadelesi**: Özellikle 90 günlük hedef (%4,51 pozitif) için maliyete duyarlı öğrenme (Cost-sensitive Learning) veya threshold tuning gerekecektir.
 2. **Ayrı Fatura Alt-Modeli Fırsatı**: Faturası bulunan ~80 aboneliklik alt küme üzerinde, ödeme başarısızlıklarının etkisini ölçen ayrı bir mikro-deney tasarlanabilir.
 3. **Metrik Önceliği**: Kurumsal değerlendirmede False Negative (churn edeceği öngörülemeyen müşteri) maliyeti False Positive maliyetinden çok daha yüksek olduğu için Recall ve PR-AUC hedeflenmelidir.
+4. **Plan Fiyatlandırma Varsayımı**: Güncel fiyatlar baz alındığından, geçmişte fiyat artışı veya paket değişikliği yapılmışsa bu etkinin izlenemeyeceği göz önünde bulundurulmalıdır.

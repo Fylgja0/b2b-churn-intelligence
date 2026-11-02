@@ -17,9 +17,19 @@
     }
   },
   "source_info": {
-    "dataset_name": "SaaS Subscriptions & Customer Churn Dataset v1.0.0",
+    "dataset_name": "Analytics Engineering – SaaS Subscriptions & Customer Churn Dataset v1.0.0",
+    "source_url": "https://www.analyticsengineering.com/datasets/saas-subscriptions",
     "license": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
-    "source_tables_dir": "/home/ahmetcan/b2b-churn-intelligence/ml/data/processed/tables"
+    "source_tables_dir": "ml/data/processed/tables"
+  },
+  "source_coverage": {
+    "coverage_start_date": "2023-01-01",
+    "coverage_end_date": "2025-12-31",
+    "coverage_basis": "declared_by_source",
+    "independently_verified": false,
+    "observed_max_started_at": "2025-10-25",
+    "observed_max_ended_at": "2025-12-30",
+    "label_observability_assumption": "Negative churn labels (ended_at IS NULL or ended_at > window_end_date) assume complete event capture through declared cutoff date 2025-12-31 without right-censoring unobserved cancellations."
   },
   "cohort_inclusion_rules": {
     "rule": "started_at <= OBSERVATION_DATE and (ended_at IS NULL or ended_at > OBSERVATION_DATE)",
@@ -50,7 +60,7 @@
       "temporal_reliability": "assumed",
       "source_table": "accounts",
       "source_column": "region",
-      "description": "Geographical region of account (e.g. APAC, EMEA, LATAM). Nulls are preserved as true missing values.",
+      "description": "Geographical region of account (e.g. APAC, EMEA, LATAM). Nulls are preserved as true missing values. Assumed invariant across subscription lifecycle.",
       "missing_value_policy": "Preserve NULL without imputation. Unobserved confounders cannot be ruled out."
     },
     {
@@ -68,7 +78,7 @@
       "temporal_reliability": "assumed",
       "source_table": "accounts",
       "source_column": "segment",
-      "description": "Company size segment (SMB, Mid-Market, Enterprise). Assumed invariant across subscription lifecycle.",
+      "description": "Company size segment (SMB, Mid-Market, Enterprise). Assumed invariant across subscription lifecycle; historical company scaling logs are absent.",
       "missing_value_policy": "Mandatory categorical, 0 missing values."
     },
     {
@@ -128,28 +138,28 @@
     {
       "name": "plan_name",
       "data_type": "string",
-      "temporal_reliability": "verified",
+      "temporal_reliability": "assumed",
       "source_table": "plans",
       "source_column": "plan_name",
-      "description": "Subscribed pricing tier name (Starter, Growth, Scale, Enterprise). Verified invariant (no plan upgrade history).",
-      "missing_value_policy": "Mandatory categorical."
+      "description": "Subscribed pricing tier name (Starter, Growth, Scale, Enterprise). Assumed invariant across subscription lifecycle; historical plan change and upgrade/downgrade event logs are absent in source data.",
+      "missing_value_policy": "Mandatory categorical, 0 missing values."
     },
     {
       "name": "plan_monthly_price",
       "data_type": "float",
-      "temporal_reliability": "verified",
+      "temporal_reliability": "assumed",
       "source_table": "plans",
       "source_column": "monthly_price",
-      "description": "Standard monthly list price of the subscribed plan from plans table.",
+      "description": "Monthly list price of the subscribed plan from plans table. Assumed invariant across subscription period; historical pricing change logs or plan tier version records are absent in source data.",
       "missing_value_policy": "Mandatory positive float."
     },
     {
       "name": "plan_included_seats",
       "data_type": "integer",
-      "temporal_reliability": "verified",
+      "temporal_reliability": "assumed",
       "source_table": "plans",
       "source_column": "included_seats",
-      "description": "Number of user seats included by default in the subscribed plan tier.",
+      "description": "Number of user seats included by default in the subscribed plan tier. Assumed invariant across subscription period; historical plan packaging or seat quota revision logs are absent in source data.",
       "missing_value_policy": "Mandatory positive integer."
     }
   ],

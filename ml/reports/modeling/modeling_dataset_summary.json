@@ -2,6 +2,15 @@
   "version": "1.0.0",
   "observation_date": "2024-12-31",
   "dataset_cutoff_date": "2025-12-31",
+  "source_coverage": {
+    "coverage_start_date": "2023-01-01",
+    "coverage_end_date": "2025-12-31",
+    "coverage_basis": "declared_by_source",
+    "independently_verified": false,
+    "observed_max_started_at": "2025-10-25",
+    "observed_max_ended_at": "2025-12-30",
+    "label_observability_assumption": "Negative churn labels (ended_at IS NULL or ended_at > window_end_date) assume complete event capture through declared cutoff date 2025-12-31 without right-censoring unobserved cancellations."
+  },
   "cohort_statistics": {
     "total_subscriptions": 2000,
     "included_in_cohort": 1242,
@@ -75,5 +84,7 @@
     "target_columns": 3,
     "total_columns": 17
   },
-  "output_csv_path": "/home/ahmetcan/b2b-churn-intelligence/ml/data/processed/modeling/churn_modeling_dataset.csv"
+  "output_csv_path": "ml/data/processed/modeling/churn_modeling_dataset.csv",
+  "manifest_path": "ml/reports/modeling/feature_manifest.json",
+  "source_tables_dir": "ml/data/processed/tables"
 }

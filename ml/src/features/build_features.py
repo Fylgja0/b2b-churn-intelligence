@@ -4,12 +4,15 @@ Point-in-Time Safe Feature Engineering & Modeling Dataset Builder.
 Constructs an observation-date-anchored (T0 = 2024-12-31) churn modeling dataset
 from cleaned source tables (accounts, subscriptions, plans, invoices, payments).
 
-Strictly prevents target leakage by:
+Designed to mitigate target leakage and clearly document temporal assumptions by:
 1. Enforcing T0 cohort eligibility (active at 2024-12-31).
-2. Deriving features solely from information knowable on or before T0.
-3. Defining 90, 180, and 365-day forward-looking churn target labels.
-4. Quarantining target leakage fields (ended_at, status, churn, tenure_days)
-   and unverified temporal fields (mrr, seats, billing aggregates).
+2. Deriving features solely from information knowable on or before T0, explicitly
+   distinguishing verified historical facts from assumed time-invariant business attributes.
+3. Defining 90, 180, and 365-day forward-looking churn target labels bounded by declared
+   dataset coverage (2023-01-01 to 2025-12-31).
+4. Quarantining explicit target leakage fields (ended_at, status, churn, tenure_days),
+   unverified temporal fields (mrr, seats, additional_seats), and low-coverage billing aggregates.
+5. Emitting portable repository-relative paths across all manifests and reports.
 """
 
 from __future__ import annotations
@@ -33,15 +36,31 @@ logger = logging.getLogger(__name__)
 SCRIPT_DIR = Path(__file__).resolve().parent
 SRC_DIR = SCRIPT_DIR.parent
 ML_DIR = SRC_DIR.parent
+REPO_ROOT = ML_DIR.parent
 
 DEFAULT_PROCESSED_TABLES_DIR = ML_DIR / "data" / "processed" / "tables"
 DEFAULT_MODELING_OUTPUT_DIR = ML_DIR / "data" / "processed" / "modeling"
 DEFAULT_REPORTS_DIR = ML_DIR / "reports" / "modeling"
 
-# Official observation date and dataset boundaries
+# Official observation date and declared dataset boundaries
 OBSERVATION_DATE = "2024-12-31"
 DATASET_CUTOFF_DATE = "2025-12-31"
+DATASET_START_DATE = "2023-01-01"
 PREDICTION_HORIZONS_DAYS = [90, 180, 365]
+
+
+def to_relative_path(path: Path | str, base_dir: Optional[Path] = None) -> str:
+    """
+    Converts absolute path to repository-relative POSIX path for cross-platform portability.
+    If path is already relative or cannot be relativized to base_dir, returns POSIX formatted string.
+    """
+    p = Path(path)
+    base = Path(base_dir or REPO_ROOT).resolve()
+    try:
+        p_resolved = p.resolve()
+        return p_resolved.relative_to(base).as_posix()
+    except (ValueError, RuntimeError):
+        return p.as_posix()
 
 
 @dataclass
@@ -80,8 +99,19 @@ class ConsistencyCheckReport:
     inconsistencies_found: bool
 
 
+@dataclass
+class SourceCoverageReport:
+    coverage_start_date: str
+    coverage_end_date: str
+    coverage_basis: str
+    independently_verified: bool
+    observed_max_started_at: str
+    observed_max_ended_at: str
+    label_observability_assumption: str
+
+
 class FeaturePipeline:
-    """Builds a leakage-free point-in-time modeling dataset and documentation manifest."""
+    """Constructs a point-in-time modeling dataset and documentation manifest with explicit temporal assumptions."""
 
     def __init__(
         self,
@@ -98,6 +128,7 @@ class FeaturePipeline:
         self.observation_date = observation_date
         self.cutoff_date = cutoff_date
         self.horizons_days = horizons_days or PREDICTION_HORIZONS_DAYS
+        self.source_coverage: Optional[SourceCoverageReport] = None
 
     def load_clean_tables(self) -> Dict[str, pd.DataFrame]:
         """Loads cleaned tables from disk."""
@@ -107,11 +138,16 @@ class FeaturePipeline:
             if not path.exists():
                 raise FileNotFoundError(f"Cleaned table not found at {path}. Run preprocess.py first.")
             tables[name] = pd.read_csv(path)
-        logger.info(f"Loaded {len(tables)} clean source tables from {self.tables_dir}")
+        logger.info(f"Loaded {len(tables)} clean source tables from {to_relative_path(self.tables_dir)}")
         return tables
 
-    def validate_dates_and_censoring(self, tables: Dict[str, pd.DataFrame]) -> Dict[str, str]:
-        """Validates prediction horizon boundaries and verifies data cutoff observability."""
+    def validate_dates_and_censoring(
+        self, tables: Dict[str, pd.DataFrame]
+    ) -> Tuple[Dict[str, str], SourceCoverageReport]:
+        """
+        Validates prediction horizon boundaries against declared dataset cutoff
+        and reports observed event date boundaries without conflating observed max with declared cutoff.
+        """
         t0_dt = pd.to_datetime(self.observation_date)
         cutoff_dt = pd.to_datetime(self.cutoff_date)
 
@@ -121,23 +157,41 @@ class FeaturePipeline:
             if end_dt > cutoff_dt:
                 raise ValueError(
                     f"Prediction horizon {h}d ends at {end_dt.strftime('%Y-%m-%d')}, "
-                    f"which exceeds dataset cutoff date {self.cutoff_date}! Right-censoring prevents full observation."
+                    f"which exceeds declared dataset coverage end date {self.cutoff_date}! "
+                    f"Right-censoring prevents complete observation."
                 )
             horizon_end_dates[f"{h}d"] = end_dt.strftime("%Y-%m-%d")
 
-        # Verify dataset coverage supports cutoff
         subs = tables["subscriptions"]
-        max_sub_event = max(
-            subs["started_at"].dropna().max(),
-            subs["ended_at"].dropna().max(),
-        )
-        if max_sub_event < "2025-01-01":
+        observed_max_started = str(subs["started_at"].dropna().max())
+        observed_max_ended = str(subs["ended_at"].dropna().max())
+        observed_max_event = max(observed_max_started, observed_max_ended)
+
+        if observed_max_event <= self.observation_date:
             raise ValueError(
-                f"Dataset subscription events end at {max_sub_event}, which cannot observe the 2025 target windows!"
+                f"Observed dataset events end at {observed_max_event}, on or before observation date {self.observation_date}. "
+                f"Cannot observe forward-looking churn outcomes!"
             )
 
-        logger.info(f"Verified prediction horizons within {self.cutoff_date}: {horizon_end_dates}")
-        return horizon_end_dates
+        coverage_report = SourceCoverageReport(
+            coverage_start_date=DATASET_START_DATE,
+            coverage_end_date=self.cutoff_date,
+            coverage_basis="declared_by_source",
+            independently_verified=False,
+            observed_max_started_at=observed_max_started,
+            observed_max_ended_at=observed_max_ended,
+            label_observability_assumption=(
+                "Negative churn labels (ended_at IS NULL or ended_at > window_end_date) assume "
+                "complete event capture through declared cutoff date 2025-12-31 without right-censoring unobserved cancellations."
+            ),
+        )
+        self.source_coverage = coverage_report
+
+        logger.info(
+            f"Validated horizons within declared cutoff {self.cutoff_date}: {horizon_end_dates}. "
+            f"Observed event range: max started={observed_max_started}, max ended={observed_max_ended}."
+        )
+        return horizon_end_dates, coverage_report
 
     def check_status_ended_at_consistency(self, subs_df: pd.DataFrame) -> ConsistencyCheckReport:
         """
@@ -320,21 +374,24 @@ class FeaturePipeline:
         plans_df: pd.DataFrame,
     ) -> pd.DataFrame:
         """
-        Derives point-in-time safe features from accounts and plans.
+        Derives point-in-time features from accounts and plans.
 
-        Safe features included:
-        - region (raw, nulls preserved)
-        - region_missing_flag (1/0)
-        - segment (categorical)
-        - acquisition_channel (categorical)
+        Safe features included (12 features):
+        Verified Historical Features:
+        - acquisition_channel (invariant initial channel)
         - account_age_days_at_t0 (T0 - created_at)
         - account_created_at_missing_flag (1/0)
         - subscription_tenure_days_at_t0 (T0 - started_at)
         - subscription_start_month (1..12)
         - subscription_start_quarter (1..4)
-        - plan_name (categorical)
-        - plan_monthly_price (float)
-        - plan_included_seats (int)
+
+        Assumed Time-Invariant Features:
+        - region (raw, nulls preserved)
+        - region_missing_flag (1/0)
+        - segment (categorical, assumed invariant)
+        - plan_name (categorical, assumed invariant)
+        - plan_monthly_price (float, assumed invariant catalog price)
+        - plan_included_seats (int, assumed invariant catalog seats)
         """
         df = cohort_df.copy()
         n_cohort = len(df)
@@ -388,7 +445,7 @@ class FeaturePipeline:
         merged["subscription_start_month"] = started_at_dt.dt.month.astype("int64")
         merged["subscription_start_quarter"] = started_at_dt.dt.quarter.astype("int64")
 
-        # Final ordered columns
+        # Final ordered columns (2 Metadata + 12 Features + 3 Targets = 17)
         ordered_columns = [
             # Metadata
             "subscription_id",
@@ -415,8 +472,23 @@ class FeaturePipeline:
         final_df = merged[ordered_columns].sort_values(by="subscription_id", ascending=True).reset_index(drop=True)
         return final_df
 
-    def build_feature_manifest(self) -> Dict[str, Any]:
-        """Constructs the comprehensive feature manifest detailing definitions, sources, and exclusions."""
+    def build_feature_manifest(
+        self, coverage_report: Optional[SourceCoverageReport] = None
+    ) -> Dict[str, Any]:
+        """Constructs the comprehensive feature manifest detailing definitions, sources, coverage, and exclusions."""
+        cov = coverage_report or self.source_coverage or SourceCoverageReport(
+            coverage_start_date=DATASET_START_DATE,
+            coverage_end_date=self.cutoff_date,
+            coverage_basis="declared_by_source",
+            independently_verified=False,
+            observed_max_started_at="2025-10-25",
+            observed_max_ended_at="2025-12-30",
+            label_observability_assumption=(
+                "Negative churn labels (ended_at IS NULL or ended_at > window_end_date) assume "
+                "complete event capture through declared cutoff date 2025-12-31 without right-censoring unobserved cancellations."
+            ),
+        )
+
         return {
             "version": "1.0.0",
             "observation_date": self.observation_date,
@@ -427,10 +499,12 @@ class FeaturePipeline:
                 "365d": {"days": 365, "window_end_date": "2025-12-31"},
             },
             "source_info": {
-                "dataset_name": "SaaS Subscriptions & Customer Churn Dataset v1.0.0",
+                "dataset_name": "Analytics Engineering – SaaS Subscriptions & Customer Churn Dataset v1.0.0",
+                "source_url": "https://www.analyticsengineering.com/datasets/saas-subscriptions",
                 "license": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
-                "source_tables_dir": str(self.tables_dir),
+                "source_tables_dir": to_relative_path(self.tables_dir),
             },
+            "source_coverage": asdict(cov),
             "cohort_inclusion_rules": {
                 "rule": "started_at <= OBSERVATION_DATE and (ended_at IS NULL or ended_at > OBSERVATION_DATE)",
                 "observation_date": self.observation_date,
@@ -460,7 +534,7 @@ class FeaturePipeline:
                     "temporal_reliability": "assumed",
                     "source_table": "accounts",
                     "source_column": "region",
-                    "description": "Geographical region of account (e.g. APAC, EMEA, LATAM). Nulls are preserved as true missing values.",
+                    "description": "Geographical region of account (e.g. APAC, EMEA, LATAM). Nulls are preserved as true missing values. Assumed invariant across subscription lifecycle.",
                     "missing_value_policy": "Preserve NULL without imputation. Unobserved confounders cannot be ruled out.",
                 },
                 {
@@ -478,7 +552,7 @@ class FeaturePipeline:
                     "temporal_reliability": "assumed",
                     "source_table": "accounts",
                     "source_column": "segment",
-                    "description": "Company size segment (SMB, Mid-Market, Enterprise). Assumed invariant across subscription lifecycle.",
+                    "description": "Company size segment (SMB, Mid-Market, Enterprise). Assumed invariant across subscription lifecycle; historical company scaling logs are absent.",
                     "missing_value_policy": "Mandatory categorical, 0 missing values.",
                 },
                 {
@@ -538,28 +612,28 @@ class FeaturePipeline:
                 {
                     "name": "plan_name",
                     "data_type": "string",
-                    "temporal_reliability": "verified",
+                    "temporal_reliability": "assumed",
                     "source_table": "plans",
                     "source_column": "plan_name",
-                    "description": "Subscribed pricing tier name (Starter, Growth, Scale, Enterprise). Verified invariant (no plan upgrade history).",
-                    "missing_value_policy": "Mandatory categorical.",
+                    "description": "Subscribed pricing tier name (Starter, Growth, Scale, Enterprise). Assumed invariant across subscription lifecycle; historical plan change and upgrade/downgrade event logs are absent in source data.",
+                    "missing_value_policy": "Mandatory categorical, 0 missing values.",
                 },
                 {
                     "name": "plan_monthly_price",
                     "data_type": "float",
-                    "temporal_reliability": "verified",
+                    "temporal_reliability": "assumed",
                     "source_table": "plans",
                     "source_column": "monthly_price",
-                    "description": "Standard monthly list price of the subscribed plan from plans table.",
+                    "description": "Monthly list price of the subscribed plan from plans table. Assumed invariant across subscription period; historical pricing change logs or plan tier version records are absent in source data.",
                     "missing_value_policy": "Mandatory positive float.",
                 },
                 {
                     "name": "plan_included_seats",
                     "data_type": "integer",
-                    "temporal_reliability": "verified",
+                    "temporal_reliability": "assumed",
                     "source_table": "plans",
                     "source_column": "included_seats",
-                    "description": "Number of user seats included by default in the subscribed plan tier.",
+                    "description": "Number of user seats included by default in the subscribed plan tier. Assumed invariant across subscription period; historical plan packaging or seat quota revision logs are absent in source data.",
                     "missing_value_policy": "Mandatory positive integer.",
                 },
             ],
@@ -687,8 +761,9 @@ class FeaturePipeline:
         consistency_report: ConsistencyCheckReport,
         target_stats: List[TargetDistribution],
         billing_stats: BillingCoverageAtT0,
+        coverage_report: SourceCoverageReport,
         manifest: Dict[str, Any],
-        output_csv_path: str,
+        output_csv_rel_path: str,
     ) -> str:
         """Generates detailed modeling dataset report adhering to specification."""
         t_90 = next(t for t in target_stats if t.horizon_days == 90)
@@ -701,18 +776,19 @@ class FeaturePipeline:
             "## 1. Modelleme Senaryosu ve Yönetici Özeti",
             "",
             "Bu çalışma, B2B SaaS müşteri kaybı (*Customer Churn*) tahmin modellerinin eğitilmesi için gerekli olan "
-            "**zaman noktasına duyarlı (Point-in-Time Safe)** modelleme veri setinin oluşturulmasını kapsamaktadır. "
-            "Makine öğrenmesi modellerinde en sık karşılaşılan metodolojik tuzak olan **Hedef Sızıntısı (Target Leakage)** "
-            "riskini tamamen bertaraf etmek amacıyla, tüm öznitelikler yalnızca tahmin anında ($T_0$) bilinebilecek bilgilerden türetilmiştir.",
+            "**zaman noktasına duyarlı (Point-in-Time Safe)** modelleme veri setinin oluşturulmasını ve metodolojik dokümantasyonunu kapsamaktadır. "
+            "Makine öğrenmesi modellerinde en sık karşılaşılan metodolojik tuzaklardan biri olan **Hedef Sızıntısı (Target Leakage)** "
+            "riskini azaltmak amacıyla, öznitelikler tahmin anında ($T_0$) bilinebilecek veya iş mantığı altında sabit kaldığı varsayılan bilgilerden türetilmiştir.",
             "",
-            "- **Gözlem Tarihi ($T_0$ / Observation Date)**: `2024-12-31` (Günün sonu)",
-            "- **Resmî Veri Kesim Tarihi (Dataset Cutoff Date)**: `2025-12-31`",
+            f"- **Gözlem Tarihi ($T_0$ / Observation Date)**: `{self.observation_date}` (Günün sonu)",
+            f"- **Beyan Edilen Veri Kapsamı Bitiş Tarihi**: `{coverage_report.coverage_end_date}`",
             f"- **Modelleme Kohortu Büyüklüğü**: {cohort_stats.included_in_cohort:,} aktif abonelik",
-            f"- **Üretilen Veri Seti**: `{output_csv_path}`",
+            f"- **Üretilen Veri Seti**: `{output_csv_rel_path}`",
+            "- **Özellik Manifestosu**: `ml/reports/modeling/feature_manifest.json`",
             "",
             "---",
             "",
-            "## 2. Zaman Noktası ($T_0$) ve Tahmin Ufukları (Prediction Horizons)",
+            "## 2. Zaman Noktası ($T_0$), Tahmin Ufukları ve Veri Kapsamı",
             "",
             "Modelleme kohortu, 31 Aralık 2024 gecesi itibarıyla aktif olan müşterilerden oluşturulmuştur. "
             "Aynı gözlem anı için üç farklı karar penceresini temsil eden ileriye dönük ikili churn hedef değişkenleri üretilmiştir:",
@@ -725,6 +801,21 @@ class FeaturePipeline:
             "",
             "> [!NOTE]",
             "> **Pencere Bitiş Tarihleri**: 2025 yılı artık yıl değildir (Şubat 28 gündür). 90 gün bitişi 31 Mart 2025, 180 gün bitişi 29 Haziran 2025 ve 365 gün bitişi 31 Aralık 2025'tir. Pencerelerin bitiş günlerinde gerçekleşen churn olayları hedef pozitif olarak sayılmıştır.",
+            "",
+            "### 2.1. Beyan Edilen Veri Kapsamı ile Satır Bazlı Gözlem Ayrımı",
+            "",
+            "- **Veri Kaynağı**: *Analytics Engineering – SaaS Subscriptions & Customer Churn Dataset v1.0.0*",
+            f"- **Beyan Edilen Kapsam**: `{coverage_report.coverage_start_date}` ile `{coverage_report.coverage_end_date}` arası.",
+            f"- **Kapsam Dayanağı (`coverage_basis`)**: `{coverage_report.coverage_basis}` (Veri kaynağı tarafından beyan edilmiş takvim aralığı).",
+            f"- **Bağımsız Doğrulama (`independently_verified`)**: `{str(coverage_report.independently_verified).lower()}` (Dış bağımsız denetim logu veya transaction watermark bulunmamaktadır).",
+            f"- **Satır Düzeyinde Gözlemlenen Maksimum Başlangıç Tarihi (`observed_max_started_at`)**: `{coverage_report.observed_max_started_at}`",
+            f"- **Satır Düzeyinde Gözlemlenen Maksimum Bitiş Tarihi (`observed_max_ended_at`)**: `{coverage_report.observed_max_ended_at}`",
+            "",
+            "> [!IMPORTANT]",
+            "> **Gözlem Bütünlüğü ve Negatif Hedef Etiketleme Varsayımı**:",
+            "> - Kaynak CSV dosyalarında bağımsız extraction timestamp veya veri akışı bütünlük watermark'ı yer almamaktadır.",
+            "> - Tablodaki maksimum `ended_at` değerinin `2025-12-30` olması, veri kesim tarihi olan `2025-12-31` gününde iptal gerçekleşmemiş olmasından kaynaklanabilir; tek başına bir eksiklik kanıtı değildir.",
+            "> - Ancak `ended_at` değeri `NULL` olan (veya hedef penceresinden sonra sonlanan) aboneliklerin negatif (0) olarak etiketlenmesi, veri kaynağının 2025 yılı boyunca tüm iptal olaylarını eksiksiz yakaladığı (**sağdan sansürleme olmadığı**) varsayımına dayanmaktadır.",
             "",
             "---",
             "",
@@ -768,7 +859,7 @@ class FeaturePipeline:
             "",
             "---",
             "",
-            "## 5. Point-in-Time Güvenli Özellikler (Feature Engineering)",
+            "## 5. Point-in-Time Özellikler (Feature Engineering)",
             "",
             "Modelleme veri setine dahil edilen tüm öznitelikler $T_0$ anı itibarıyla dondurulmuştur:",
             "",
@@ -783,9 +874,9 @@ class FeaturePipeline:
             "| `subscription_tenure_days_at_t0` | `integer` | `subscriptions` | Verified | $T_0$ anındaki abonelik kıdemi ($T_0 - \\text{started\\_at}$). Hedef sızıntısından arındırılmıştır. |",
             "| `subscription_start_month` | `integer` | `subscriptions` | Verified | Abonelik başlangıç ayı (1 - 12). Mevsimsellik göstergesi. |",
             "| `subscription_start_quarter` | `integer` | `subscriptions` | Verified | Abonelik başlangıç çeyreği (1 - 4). |",
-            "| `plan_name` | `string` | `plans` | Verified | Abone olunan plan adı (Starter, Growth, Scale, Enterprise). |",
-            "| `plan_monthly_price` | `float` | `plans` | Verified | Planın aylık liste fiyatı (`monthly_price`). |",
-            "| `plan_included_seats` | `integer` | `plans` | Verified | Plan kapsamında sunulan dahil koltuk sayısı (`included_seats`). |",
+            "| `plan_name` | `string` | `plans` | Assumed | Abone olunan plan adı (Starter, Growth, Scale, Enterprise). Değişmediği varsayılmıştır. |",
+            "| `plan_monthly_price` | `float` | `plans` | Assumed | Planın aylık liste fiyatı (`monthly_price`). Fiyatın geçmişte değişmediği varsayılmıştır. |",
+            "| `plan_included_seats` | `integer` | `plans` | Assumed | Plan dahilindeki koltuk sayısı (`included_seats`). Paket kapsamının değişmediği varsayılmıştır. |",
             "",
             "---",
             "",
@@ -793,8 +884,15 @@ class FeaturePipeline:
             "",
             "Kaynak dokümantasyon ve veri mimarisi incelemeleri sonucunda özelliklerin zaman içindeki davranışları üç grupta sınıflandırılmıştır:",
             "",
-            "1. **Doğrulanmış (Verified)**: Zamansal olarak sabit olduğu kesin olan veya doğrudan $T_0$ ile geçmiş tarihler arasındaki farktan hesaplanan özellikler (`acquisition_channel`, `account_age_days_at_t0`, `subscription_tenure_days_at_t0`, `subscription_start_month`, `subscription_start_quarter`, plan özellikleri).",
-            "2. **Varsayıma Dayalı (Assumed)**: Kaynak dokümantasyonda geçmiş logu tutulmayan ancak iş mantığı gereği abonelik boyunca değişmediği varsayılan özellikler (`region`, `segment`). Şirketlerin $T_0$ öncesinde büyüyüp segment değiştirip değiştirmediği kaynak veride teyit edilememektedir.",
+            "1. **Doğrulanmış (Verified)**: Zamansal olarak sabit olduğu kesin olan veya doğrudan $T_0$ ile geçmiş tarihler arasındaki farktan hesaplanan özellikler:",
+            "   - `acquisition_channel`: Müşterinin ilk edinim kanalı, tanımı gereği zamanla değişmeyen başlangıç olayıdır.",
+            "   - `account_age_days_at_t0`, `account_created_at_missing_flag`: $T_0$ ile `created_at` arasındaki matematiksel gün farkı.",
+            "   - `subscription_tenure_days_at_t0`: $T_0$ ile `started_at` arasındaki matematiksel gün farkı.",
+            "   - `subscription_start_month`, `subscription_start_quarter`: Başlangıç tarihinin takvim bileşenleri.",
+            "2. **Varsayıma Dayalı (Assumed)**: Kaynak veride geçmiş logu veya versiyonlama tutulmayan ancak iş mantığı gereği abonelik boyunca değişmediği varsayılan özellikler:",
+            "   - `region`, `region_missing_flag`: Müşteri şirket merkezinin abonelik süresince değişmediği varsayılmıştır.",
+            "   - `segment`: Şirket ölçeğinin (SMB, Mid-Market, Enterprise) $T_0$ öncesinde değişmediği varsayılmıştır.",
+            "   - `plan_name`, `plan_monthly_price`, `plan_included_seats`: Kaynak veride plan versiyonlaması veya geçmiş fiyatlandırma kayıtları bulunmamaktadır. Güncel plan kataloğundaki liste fiyatı ve dahil koltuk adedinin abonelik dönemi boyunca sabit kaldığı varsayılmıştır; fiyatların veya paket kapsamının geçmişte değişmiş olma riski metodolojik bir sınırlılık olarak değerlendirilmelidir.",
             "3. **Doğrulanamayan (Unverified)**: $T_0$ tarihindeki değerini geçmişe dönük olarak garanti edemediğimiz alanlar (`seats`, `mrr`, `additional_seats`). Bu alanlar model veri setinden **tamamen çıkarılmıştır**.",
             "",
             "---",
@@ -848,6 +946,7 @@ class FeaturePipeline:
             "1. **Sınıf Dengesizliği Mücadelesi**: Özellikle 90 günlük hedef (%4,51 pozitif) için maliyete duyarlı öğrenme (Cost-sensitive Learning) veya threshold tuning gerekecektir.",
             "2. **Ayrı Fatura Alt-Modeli Fırsatı**: Faturası bulunan ~80 aboneliklik alt küme üzerinde, ödeme başarısızlıklarının etkisini ölçen ayrı bir mikro-deney tasarlanabilir.",
             "3. **Metrik Önceliği**: Kurumsal değerlendirmede False Negative (churn edeceği öngörülemeyen müşteri) maliyeti False Positive maliyetinden çok daha yüksek olduğu için Recall ve PR-AUC hedeflenmelidir.",
+            "4. **Plan Fiyatlandırma Varsayımı**: Güncel fiyatlar baz alındığından, geçmişte fiyat artışı veya paket değişikliği yapılmışsa bu etkinin izlenemeyeceği göz önünde bulundurulmalıdır.",
         ]
 
         return "\n".join(md)
@@ -860,8 +959,8 @@ class FeaturePipeline:
         logger.info("Starting Point-in-Time Feature Engineering pipeline...")
         tables = self.load_clean_tables()
 
-        # Step 1: Validate dates and right-censoring
-        horizon_end_dates = self.validate_dates_and_censoring(tables)
+        # Step 1: Validate dates, cutoff, and censoring
+        horizon_end_dates, coverage_report = self.validate_dates_and_censoring(tables)
 
         # Step 2: Check status and ended_at consistency
         consistency_report = self.check_status_ended_at_consistency(tables["subscriptions"])
@@ -887,23 +986,25 @@ class FeaturePipeline:
         # Step 7: Save modeling dataset CSV
         output_csv_path = self.output_dir / "churn_modeling_dataset.csv"
         modeling_dataset.to_csv(output_csv_path, index=False)
+        output_csv_rel = to_relative_path(output_csv_path)
         logger.info(
-            f"Saved modeling dataset: {output_csv_path} "
+            f"Saved modeling dataset: {output_csv_rel} "
             f"({len(modeling_dataset)} rows, {len(modeling_dataset.columns)} columns)"
         )
 
         # Step 8: Generate and save feature manifest
-        manifest = self.build_feature_manifest()
+        manifest = self.build_feature_manifest(coverage_report)
         manifest_path = self.reports_dir / "feature_manifest.json"
         with open(manifest_path, "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2, ensure_ascii=False)
-        logger.info(f"Saved feature manifest: {manifest_path}")
+        logger.info(f"Saved feature manifest: {to_relative_path(manifest_path)}")
 
         # Step 9: Generate and save summary JSON
         summary_dict = {
             "version": "1.0.0",
             "observation_date": self.observation_date,
             "dataset_cutoff_date": self.cutoff_date,
+            "source_coverage": asdict(coverage_report),
             "cohort_statistics": asdict(cohort_stats),
             "status_ended_at_consistency": asdict(consistency_report),
             "target_distributions": [asdict(t) for t in target_stats],
@@ -916,12 +1017,14 @@ class FeaturePipeline:
                 "target_columns": 3,
                 "total_columns": len(modeling_dataset.columns),
             },
-            "output_csv_path": str(output_csv_path),
+            "output_csv_path": output_csv_rel,
+            "manifest_path": to_relative_path(manifest_path),
+            "source_tables_dir": to_relative_path(self.tables_dir),
         }
         summary_path = self.reports_dir / "modeling_dataset_summary.json"
         with open(summary_path, "w", encoding="utf-8") as f:
             json.dump(summary_dict, f, indent=2, ensure_ascii=False)
-        logger.info(f"Saved modeling dataset summary JSON: {summary_path}")
+        logger.info(f"Saved modeling dataset summary JSON: {to_relative_path(summary_path)}")
 
         # Step 10: Generate and save markdown report
         report_md = self.generate_markdown_report(
@@ -929,13 +1032,14 @@ class FeaturePipeline:
             consistency_report,
             target_stats,
             billing_stats,
+            coverage_report,
             manifest,
-            str(output_csv_path),
+            output_csv_rel,
         )
         report_path = self.reports_dir / "modeling_dataset_report.md"
         with open(report_path, "w", encoding="utf-8") as f:
             f.write(report_md)
-        logger.info(f"Saved modeling dataset Markdown report: {report_path}")
+        logger.info(f"Saved modeling dataset Markdown report: {to_relative_path(report_path)}")
 
         return summary_dict
 
@@ -948,6 +1052,8 @@ def main() -> None:
     print("CHURN MODELING FEATURE ENGINEERING COMPLETE")
     print(f"Observation Date (T0): {summary['observation_date']}")
     print(f"Dataset Cutoff Date: {summary['dataset_cutoff_date']}")
+    print(f"Source Coverage Basis: {summary['source_coverage']['coverage_basis']} "
+          f"({summary['source_coverage']['coverage_start_date']} to {summary['source_coverage']['coverage_end_date']})")
     print(f"Cohort Included Rows: {summary['cohort_statistics']['included_in_cohort']:,}")
     print(f"Total Columns: {summary['feature_counts']['total_columns']} "
           f"(2 Metadata + 12 Features + 3 Targets)")

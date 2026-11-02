@@ -191,3 +191,116 @@ def test_negative_unexpected_categorical_value(validator: DataValidator) -> None
 
     assert status_check.passed is False, "Validator must fail on unexpected categorical value"
     assert "pending_review" in status_check.details["unexpected_values"]
+
+
+def test_negative_invalid_calendar_date(validator: DataValidator) -> None:
+    """Negative Test 8: Catches impossible calendar dates in raw data (e.g. 2025-02-31)."""
+    clean_tables = {name: df.copy() for name, df in validator.load_processed_tables().items()}
+    raw_tables = {name: df.copy() for name, df in validator.load_raw_tables().items()}
+
+    target_pk = clean_tables["accounts"].loc[0, "account_id"]
+    raw_tables["accounts"].loc[raw_tables["accounts"]["account_id"] == target_pk, "created_at"] = "2025-02-31"
+
+    date_conv_checks = validator.validate_date_conversions(clean_tables, raw_tables)
+    check = next(c for c in date_conv_checks if c.check_name == "date_conversion_accounts_created_at")
+
+    assert check.passed is False, "Validator must fail when raw date is an impossible calendar date"
+    assert check.details["raw_invalid_calendar_count"] >= 1
+    assert check.details["total_failures"] >= 1
+
+
+def test_negative_raw_clean_date_mismatch(validator: DataValidator) -> None:
+    """Negative Test 9: Catches discrepancy where clean date differs in calendar day from raw date."""
+    clean_tables = {name: df.copy() for name, df in validator.load_processed_tables().items()}
+    raw_tables = {name: df.copy() for name, df in validator.load_raw_tables().items()}
+
+    target_pk = clean_tables["accounts"].loc[0, "account_id"]
+    raw_tables["accounts"].loc[raw_tables["accounts"]["account_id"] == target_pk, "created_at"] = "2025-05-10"
+    clean_tables["accounts"].loc[clean_tables["accounts"]["account_id"] == target_pk, "created_at"] = "2025-05-11"
+
+    date_conv_checks = validator.validate_date_conversions(clean_tables, raw_tables)
+    check = next(c for c in date_conv_checks if c.check_name == "date_conversion_accounts_created_at")
+
+    assert check.passed is False, "Validator must fail when raw and clean dates represent different calendar days"
+    assert check.details["raw_clean_mismatch_count"] >= 1
+
+
+def test_negative_clean_date_invalid_calendar(validator: DataValidator) -> None:
+    """Negative Test 10: Catches clean date that has valid string format syntax but is invalid on calendar."""
+    clean_tables = {name: df.copy() for name, df in validator.load_processed_tables().items()}
+    raw_tables = {name: df.copy() for name, df in validator.load_raw_tables().items()}
+
+    target_pk = clean_tables["accounts"].loc[0, "account_id"]
+    raw_tables["accounts"].loc[raw_tables["accounts"]["account_id"] == target_pk, "created_at"] = "2025-02-28"
+    clean_tables["accounts"].loc[clean_tables["accounts"]["account_id"] == target_pk, "created_at"] = "2025-02-31"
+
+    date_conv_checks = validator.validate_date_conversions(clean_tables, raw_tables)
+    check = next(c for c in date_conv_checks if c.check_name == "date_conversion_accounts_created_at")
+
+    assert check.passed is False, "Validator must fail when clean date is an impossible calendar date"
+    assert check.details["clean_invalid_calendar_count"] >= 1
+
+
+def test_negative_unique_but_unmatched_account_id(validator: DataValidator) -> None:
+    """Negative Test 11: Catches unique subscription account_id that does not exist in accounts."""
+    tables = {name: df.copy() for name, df in validator.load_processed_tables().items()}
+    tables["subscriptions"].loc[0, "account_id"] = "ACC_UNKNOWN_999999"
+
+    coverage_checks = validator.validate_cross_table_coverage(tables)
+    card_check = next(c for c in coverage_checks if c.check_name == "coverage_account_subscription_1to1")
+
+    assert card_check.passed is False, "Validator must fail when subscriptions contain account_ids not in accounts"
+    assert card_check.details["mismatch_count"] > 0
+    assert card_check.details["unexpected_accounts_count"] > 0
+    assert card_check.details["missing_accounts_count"] > 0
+
+
+def test_negative_duplicate_account_id(validator: DataValidator) -> None:
+    """Negative Test 12: Catches duplicate account references in subscriptions (breaking 1:1)."""
+    tables = {name: df.copy() for name, df in validator.load_processed_tables().items()}
+    tables["subscriptions"].loc[1, "account_id"] = tables["subscriptions"].loc[0, "account_id"]
+
+    coverage_checks = validator.validate_cross_table_coverage(tables)
+    card_check = next(c for c in coverage_checks if c.check_name == "coverage_account_subscription_1to1")
+
+    assert card_check.passed is False, "Validator must fail when duplicate account_id references exist"
+    assert card_check.details["duplicate_account_refs_count"] > 0
+    assert card_check.details["mismatch_count"] > 0
+
+
+def test_negative_mandatory_categorical_status_null(validator: DataValidator) -> None:
+    """Negative Test 13: Catches NULL values in mandatory categorical field subscriptions.status."""
+    tables = {name: df.copy() for name, df in validator.load_processed_tables().items()}
+    tables["subscriptions"].loc[0, "status"] = None
+
+    cat_checks = validator.validate_categoricals(tables)
+    status_check = next(c for c in cat_checks if c.check_name == "categorical_domain_subscriptions_status")
+
+    assert status_check.passed is False, "Validator must fail when mandatory subscriptions.status has NULL"
+    assert status_check.details["null_count"] > 0
+    assert status_check.details["nullable"] is False
+
+
+def test_negative_mandatory_categorical_channel_null(validator: DataValidator) -> None:
+    """Negative Test 14: Catches NULL values in mandatory categorical field accounts.acquisition_channel."""
+    tables = {name: df.copy() for name, df in validator.load_processed_tables().items()}
+    tables["accounts"].loc[0, "acquisition_channel"] = None
+
+    cat_checks = validator.validate_categoricals(tables)
+    channel_check = next(c for c in cat_checks if c.check_name == "categorical_domain_accounts_acquisition_channel")
+
+    assert channel_check.passed is False, "Validator must fail when mandatory accounts.acquisition_channel has NULL"
+    assert channel_check.details["null_count"] > 0
+    assert channel_check.details["nullable"] is False
+
+
+def test_positive_nullable_region_null(validator: DataValidator) -> None:
+    """Positive Test: Verifies that nullable categorical field accounts.region allows NULL values."""
+    tables = validator.load_processed_tables()
+    cat_checks = validator.validate_categoricals(tables)
+    region_check = next(c for c in cat_checks if c.check_name == "categorical_domain_accounts_region")
+
+    assert region_check.passed is True, "Validator must pass when nullable accounts.region contains NULLs"
+    assert region_check.details["nullable"] is True
+    assert region_check.details["null_count"] > 0
+

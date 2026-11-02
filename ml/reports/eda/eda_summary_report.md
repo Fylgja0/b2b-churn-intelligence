@@ -29,7 +29,7 @@
 
 > **Gözlem**: En düşük churn %17.16 ile `mid_market` segmentindedir. `SMB` segmenti hacim olarak veri setinin %70.35'ini oluşturmakta ve %21.54 churn oranına sahiptir.
 
-### 2.3. Coğrafi Bölge Bazlı Churn Analizi
+### 2.3. Coğrafi Bölge ve Eksik Bölge Analizi (Ki-kare Bağımsızlık Testleri)
 | Bölge | Toplam Müşteri | Churn Sayısı | Churn Oranı (%) |
 |---|---:|---:|---:|
 | `APAC` | 500 | 108 | %21.60 |
@@ -37,14 +37,21 @@
 | `LATAM` | 501 | 102 | %20.36 |
 | `Missing` | 479 | 101 | %21.09 |
 
-> **Gözlem ve Analitik Yorum (Eksik Veri Mekanizması)**:
-> - Eksik bölge bilgisine sahip 479 hesabın churn oranı (%21.09), bilinen bölgelerle (APAC: %21.60, LATAM: %20.36, EMEA: %19.04) sayısal olarak benzerdir.
-> - Gözlemlenebilir değişkenlerle eksiklik durumu arasında Ki-kare (Chi-square) bağımsızlık testleri gerçekleştirilmiştir:
->   - Churn durumu vs Eksik Bölge: $\chi^2 = 0.1325$ (dof=1)
->   - Segment vs Eksik Bölge: $\chi^2 = 0.1604$ (dof=2)
->   - Edinme Kanalı vs Eksik Bölge: $\chi^2 = 1.8838$ (dof=4)
->   - Plan vs Eksik Bölge: $\chi^2 = 1.3764$ (dof=3)
-> - **Önemli Metodolojik Uyarı**: Yalnızca churn oranlarının benzer olması ve gözlemlenebilir değişkenlerle istatistiksel bağımlılık bulunamamış olması, eksikliğin kesin olarak **MCAR (Missing Completely At Random)** olduğunu kanıtlamaz. Gözlemlenemeyen faktörlerin (unobserved confounders) eksiklik sürecini etkileyip etkilemediği mevcut veri seti ile test edilemez. Bu nedenle eksiklik mekanizması mevcut veriler ışığında **belirsiz / kanıtlanmamış** olarak değerlendirilmeli, eksik değerler yapay varsayımlarla doldurulmamalıdır.
+#### Eksik Bölge ile Gözlemlenebilir Değişkenler Arasındaki Ki-kare Bağımsızlık Testleri
+
+Hesaplanan parametreler: $\chi^2$ test istatistiği, serbestlik derecesi (dof), p-değeri (`correction=False`), minimum beklenen hücre frekansı ve Ki-kare varsayım kontrolü (beklenen frekansı < 5 olan hücre sayısı):
+
+| Değişken | $\chi^2$ İstatistiği | dof | p-değeri | Min. Beklenen Frekans | Hücre (< 5) | Varsayım Durumu |
+|---|---:|---:|---:|---:|:---:|:---:|
+| `churn` | 0.1325 | 1 | 0.7158 | 98.19 | 0/4 | Karşılandı ✅ |
+| `segment` | 0.1604 | 2 | 0.9229 | 28.98 | 0/6 | Karşılandı ✅ |
+| `acquisition_channel` | 1.8838 | 4 | 0.7571 | 92.21 | 0/10 | Karşılandı ✅ |
+| `plan_name` | 1.3764 | 3 | 0.7111 | 24.91 | 0/8 | Karşılandı ✅ |
+
+> **İstatistiksel Yorum ve Metodolojik Sınırlar (Eksik Veri Mekanizması)**:
+> - **p-değeri Analizi**: $\alpha = 0.05$ anlamlılık düzeyinde incelendiğinde, tüm değişkenler için p-değerleri ($p > 0.70$) anlamlılık eşiğinin oldukça üzerindedir. Bu durum, eksik bölge bilgisi ile churn, müşteri segmenti, edinme kanalı veya plan türü arasında istatistiksel olarak anlamlı bir ilişki bulunamadığını gösterir.
+> - **Varsayım Kontrolü**: Minimum beklenen hücre frekanslarının tamamı (en düşüğü 24.91) 5 eşiğinin çok üzerindedir ve beklenen frekansı 5'in altında olan hiçbir hücre yoktur. Cochran varsayımları tam olarak karşılanmaktadır.
+> - **Önemli Metodolojik Uyarı**: Raporlanan p-değerleri keşifsel ve ham p-değerleridir; çoklu karşılaştırma (multiple testing) düzeltmesi uygulanmamıştır. En önemlisi, **gözlemlenebilir değişkenlerle anlamlı bir ilişki bulunamaması (bağımlılık olmaması), eksikliğin tamamen rastgele (MCAR - Missing Completely At Random) olduğunun kanıtı değildir**. Gözlemlenemeyen faktörlerin (unobserved confounders) eksiklik sürecini etkileyip etkilemediği bu veri setiyle test edilemez. Bu nedenle eksiklik mekanizması mevcut veriler ışığında **belirsiz / kanıtlanmamış** olarak değerlendirilmeli, eksik değerler yapay varsayımlarla doldurulmamalıdır.
 
 ### 2.4. Edinme Kanalı (Acquisition Channel) Bazlı Churn Analizi
 | Kanal | Toplam Müşteri | Churn Sayısı | Churn Oranı (%) |

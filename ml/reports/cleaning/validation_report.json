@@ -223,6 +223,8 @@
       "details": {
         "table": "accounts",
         "column": "region",
+        "nullable": true,
+        "null_count": 479,
         "allowed_values": [
           "APAC",
           "EMEA",
@@ -236,7 +238,7 @@
         ],
         "unexpected_values": []
       },
-      "message": "Categorical 'region' in 'accounts' contains only valid allowed domain values: True."
+      "message": "Categorical 'region' in 'accounts' passed (valid domain, nullability rule satisfied: nullable=True, nulls=479)."
     },
     {
       "check_name": "categorical_domain_accounts_segment",
@@ -245,6 +247,8 @@
       "details": {
         "table": "accounts",
         "column": "segment",
+        "nullable": false,
+        "null_count": 0,
         "allowed_values": [
           "SMB",
           "enterprise",
@@ -257,7 +261,7 @@
         ],
         "unexpected_values": []
       },
-      "message": "Categorical 'segment' in 'accounts' contains only valid allowed domain values: True."
+      "message": "Categorical 'segment' in 'accounts' passed (valid domain, nullability rule satisfied: nullable=False, nulls=0)."
     },
     {
       "check_name": "categorical_domain_accounts_acquisition_channel",
@@ -266,6 +270,8 @@
       "details": {
         "table": "accounts",
         "column": "acquisition_channel",
+        "nullable": false,
+        "null_count": 0,
         "allowed_values": [
           "organic",
           "outbound",
@@ -282,7 +288,7 @@
         ],
         "unexpected_values": []
       },
-      "message": "Categorical 'acquisition_channel' in 'accounts' contains only valid allowed domain values: True."
+      "message": "Categorical 'acquisition_channel' in 'accounts' passed (valid domain, nullability rule satisfied: nullable=False, nulls=0)."
     },
     {
       "check_name": "categorical_domain_subscriptions_status",
@@ -291,6 +297,8 @@
       "details": {
         "table": "subscriptions",
         "column": "status",
+        "nullable": false,
+        "null_count": 0,
         "allowed_values": [
           "active",
           "cancelled"
@@ -301,7 +309,7 @@
         ],
         "unexpected_values": []
       },
-      "message": "Categorical 'status' in 'subscriptions' contains only valid allowed domain values: True."
+      "message": "Categorical 'status' in 'subscriptions' passed (valid domain, nullability rule satisfied: nullable=False, nulls=0)."
     },
     {
       "check_name": "categorical_domain_subscriptions_plan_id",
@@ -310,6 +318,8 @@
       "details": {
         "table": "subscriptions",
         "column": "plan_id",
+        "nullable": false,
+        "null_count": 0,
         "allowed_values": [
           "PLN_ENTERPRISE",
           "PLN_GROWTH",
@@ -324,7 +334,7 @@
         ],
         "unexpected_values": []
       },
-      "message": "Categorical 'plan_id' in 'subscriptions' contains only valid allowed domain values: True."
+      "message": "Categorical 'plan_id' in 'subscriptions' passed (valid domain, nullability rule satisfied: nullable=False, nulls=0)."
     },
     {
       "check_name": "categorical_domain_invoices_invoice_status",
@@ -333,6 +343,8 @@
       "details": {
         "table": "invoices",
         "column": "invoice_status",
+        "nullable": false,
+        "null_count": 0,
         "allowed_values": [
           "open",
           "paid",
@@ -345,7 +357,7 @@
         ],
         "unexpected_values": []
       },
-      "message": "Categorical 'invoice_status' in 'invoices' contains only valid allowed domain values: True."
+      "message": "Categorical 'invoice_status' in 'invoices' passed (valid domain, nullability rule satisfied: nullable=False, nulls=0)."
     },
     {
       "check_name": "categorical_domain_payments_payment_status",
@@ -354,6 +366,8 @@
       "details": {
         "table": "payments",
         "column": "payment_status",
+        "nullable": false,
+        "null_count": 0,
         "allowed_values": [
           "failed",
           "succeeded"
@@ -364,7 +378,7 @@
         ],
         "unexpected_values": []
       },
-      "message": "Categorical 'payment_status' in 'payments' contains only valid allowed domain values: True."
+      "message": "Categorical 'payment_status' in 'payments' passed (valid domain, nullability rule satisfied: nullable=False, nulls=0)."
     },
     {
       "check_name": "categorical_domain_plans_plan_id",
@@ -373,6 +387,8 @@
       "details": {
         "table": "plans",
         "column": "plan_id",
+        "nullable": false,
+        "null_count": 0,
         "allowed_values": [
           "PLN_ENTERPRISE",
           "PLN_GROWTH",
@@ -387,7 +403,7 @@
         ],
         "unexpected_values": []
       },
-      "message": "Categorical 'plan_id' in 'plans' contains only valid allowed domain values: True."
+      "message": "Categorical 'plan_id' in 'plans' passed (valid domain, nullability rule satisfied: nullable=False, nulls=0)."
     },
     {
       "check_name": "date_conversion_accounts_created_at",
@@ -398,11 +414,15 @@
         "column": "created_at",
         "total_rows": 2000,
         "originally_missing_count": 1,
-        "unparseable_failed_count": 0,
         "successfully_converted_count": 1999,
-        "sample_unparseable": []
+        "raw_invalid_calendar_count": 0,
+        "clean_invalid_calendar_count": 0,
+        "raw_clean_mismatch_count": 0,
+        "unparseable_failed_count": 0,
+        "total_failures": 0,
+        "sample_problems": []
       },
-      "message": "Date conversion check on 'accounts.created_at' PASSED: 1999 converted, 1 originally missing preserved, 0 unparseable errors."
+      "message": "Date conversion check on 'accounts.created_at' PASSED: 1999 converted, 1 originally missing preserved, 0 errors."
     },
     {
       "check_name": "date_conversion_subscriptions_started_at",
@@ -413,11 +433,15 @@
         "column": "started_at",
         "total_rows": 2000,
         "originally_missing_count": 1,
-        "unparseable_failed_count": 0,
         "successfully_converted_count": 1999,
-        "sample_unparseable": []
+        "raw_invalid_calendar_count": 0,
+        "clean_invalid_calendar_count": 0,
+        "raw_clean_mismatch_count": 0,
+        "unparseable_failed_count": 0,
+        "total_failures": 0,
+        "sample_problems": []
       },
-      "message": "Date conversion check on 'subscriptions.started_at' PASSED: 1999 converted, 1 originally missing preserved, 0 unparseable errors."
+      "message": "Date conversion check on 'subscriptions.started_at' PASSED: 1999 converted, 1 originally missing preserved, 0 errors."
     },
     {
       "check_name": "date_conversion_subscriptions_ended_at",
@@ -428,11 +452,15 @@
         "column": "ended_at",
         "total_rows": 2000,
         "originally_missing_count": 1590,
-        "unparseable_failed_count": 0,
         "successfully_converted_count": 410,
-        "sample_unparseable": []
+        "raw_invalid_calendar_count": 0,
+        "clean_invalid_calendar_count": 0,
+        "raw_clean_mismatch_count": 0,
+        "unparseable_failed_count": 0,
+        "total_failures": 0,
+        "sample_problems": []
       },
-      "message": "Date conversion check on 'subscriptions.ended_at' PASSED: 410 converted, 1590 originally missing preserved, 0 unparseable errors."
+      "message": "Date conversion check on 'subscriptions.ended_at' PASSED: 410 converted, 1590 originally missing preserved, 0 errors."
     },
     {
       "check_name": "date_conversion_invoices_invoice_date",
@@ -443,11 +471,15 @@
         "column": "invoice_date",
         "total_rows": 2000,
         "originally_missing_count": 1,
-        "unparseable_failed_count": 0,
         "successfully_converted_count": 1999,
-        "sample_unparseable": []
+        "raw_invalid_calendar_count": 0,
+        "clean_invalid_calendar_count": 0,
+        "raw_clean_mismatch_count": 0,
+        "unparseable_failed_count": 0,
+        "total_failures": 0,
+        "sample_problems": []
       },
-      "message": "Date conversion check on 'invoices.invoice_date' PASSED: 1999 converted, 1 originally missing preserved, 0 unparseable errors."
+      "message": "Date conversion check on 'invoices.invoice_date' PASSED: 1999 converted, 1 originally missing preserved, 0 errors."
     },
     {
       "check_name": "date_conversion_invoices_due_date",
@@ -458,11 +490,15 @@
         "column": "due_date",
         "total_rows": 2000,
         "originally_missing_count": 0,
-        "unparseable_failed_count": 0,
         "successfully_converted_count": 2000,
-        "sample_unparseable": []
+        "raw_invalid_calendar_count": 0,
+        "clean_invalid_calendar_count": 0,
+        "raw_clean_mismatch_count": 0,
+        "unparseable_failed_count": 0,
+        "total_failures": 0,
+        "sample_problems": []
       },
-      "message": "Date conversion check on 'invoices.due_date' PASSED: 2000 converted, 0 originally missing preserved, 0 unparseable errors."
+      "message": "Date conversion check on 'invoices.due_date' PASSED: 2000 converted, 0 originally missing preserved, 0 errors."
     },
     {
       "check_name": "date_conversion_payments_attempted_at",
@@ -473,11 +509,15 @@
         "column": "attempted_at",
         "total_rows": 2000,
         "originally_missing_count": 1,
-        "unparseable_failed_count": 0,
         "successfully_converted_count": 1999,
-        "sample_unparseable": []
+        "raw_invalid_calendar_count": 0,
+        "clean_invalid_calendar_count": 0,
+        "raw_clean_mismatch_count": 0,
+        "unparseable_failed_count": 0,
+        "total_failures": 0,
+        "sample_problems": []
       },
-      "message": "Date conversion check on 'payments.attempted_at' PASSED: 1999 converted, 1 originally missing preserved, 0 unparseable errors."
+      "message": "Date conversion check on 'payments.attempted_at' PASSED: 1999 converted, 1 originally missing preserved, 0 errors."
     },
     {
       "check_name": "date_order_subscriptions_started_vs_ended",
@@ -616,9 +656,15 @@
         "actual_subscriptions_count": 2000,
         "actual_unique_subscriptions": 2000,
         "actual_unique_accounts_in_subs": 2000,
+        "missing_accounts_count": 0,
+        "missing_accounts_samples": [],
+        "unexpected_accounts_count": 0,
+        "unexpected_accounts_samples": [],
+        "duplicate_account_refs_count": 0,
+        "row_count_diff": 0,
         "mismatch_count": 0
       },
-      "message": "Account-Subscription 1:1 relationship confirmed (2,000 accounts = 2,000 subscriptions)."
+      "message": "Account-Subscription 1:1 relationship confirmed (2,000 accounts = 2,000 subscriptions, 0 mismatches)."
     },
     {
       "check_name": "coverage_invoice_cohort_match",

@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from scipy.stats import chi2_contingency
 
 logging.basicConfig(
     level=logging.INFO,
@@ -493,17 +494,50 @@ class SaasChurnEDA:
         df_missing_test["is_missing_region"] = df_missing_test["region"].isna()
         region_independence_tests = {}
         for col in ["churn", "segment", "acquisition_channel", "plan_name"]:
-            obs = pd.crosstab(df_missing_test["is_missing_region"], df_missing_test[col]).values
-            row_sums = obs.sum(axis=1, keepdims=True)
-            col_sums = obs.sum(axis=0, keepdims=True)
-            total = obs.sum()
-            exp = (row_sums * col_sums) / total
-            chi2 = float(np.sum((obs - exp)**2 / exp))
-            dof = int((obs.shape[0] - 1) * (obs.shape[1] - 1))
-            region_independence_tests[col] = {
-                "chi2_statistic": round(chi2, 4),
-                "degrees_of_freedom": dof,
-            }
+            try:
+                contingency = pd.crosstab(df_missing_test["is_missing_region"], df_missing_test[col])
+                if contingency.empty or (contingency.values == 0).all() or contingency.shape[0] < 2 or contingency.shape[1] < 2:
+                    region_independence_tests[col] = {
+                        "status": "cannot_compute",
+                        "error": "Degenerate contingency table (fewer than 2 rows or columns)",
+                        "chi2_statistic": None,
+                        "degrees_of_freedom": None,
+                        "p_value": None,
+                        "min_expected_frequency": None,
+                        "cells_expected_lt_5": None,
+                        "total_cells": None,
+                        "assumptions_met": False,
+                    }
+                    continue
+
+                chi2_stat, p_val, dof, expected = chi2_contingency(contingency, correction=False)
+                min_exp = float(expected.min())
+                cells_lt_5 = int((expected < 5).sum())
+                total_cells = int(expected.size)
+                assumptions_met = bool(min_exp >= 5.0 and cells_lt_5 == 0)
+
+                region_independence_tests[col] = {
+                    "status": "success",
+                    "chi2_statistic": round(float(chi2_stat), 4),
+                    "degrees_of_freedom": int(dof),
+                    "p_value": round(float(p_val), 4),
+                    "min_expected_frequency": round(min_exp, 2),
+                    "cells_expected_lt_5": cells_lt_5,
+                    "total_cells": total_cells,
+                    "assumptions_met": assumptions_met,
+                }
+            except Exception as e:
+                region_independence_tests[col] = {
+                    "status": "error",
+                    "error": str(e),
+                    "chi2_statistic": None,
+                    "degrees_of_freedom": None,
+                    "p_value": None,
+                    "min_expected_frequency": None,
+                    "cells_expected_lt_5": None,
+                    "total_cells": None,
+                    "assumptions_met": False,
+                }
 
         return {
             "total_accounts": total_accounts,
@@ -566,7 +600,7 @@ class SaasChurnEDA:
             "",
             "> **Gözlem**: En düşük churn %17.16 ile `mid_market` segmentindedir. `SMB` segmenti hacim olarak veri setinin %70.35'ini oluşturmakta ve %21.54 churn oranına sahiptir.",
             "",
-            "### 2.3. Coğrafi Bölge Bazlı Churn Analizi",
+            "### 2.3. Coğrafi Bölge ve Eksik Bölge Analizi (Ki-kare Bağımsızlık Testleri)",
             "| Bölge | Toplam Müşteri | Churn Sayısı | Churn Oranı (%) |",
             "|---|---:|---:|---:|",
         ])
@@ -576,14 +610,31 @@ class SaasChurnEDA:
 
         md_lines.extend([
             "",
-            "> **Gözlem ve Analitik Yorum (Eksik Veri Mekanizması)**:",
-            "> - Eksik bölge bilgisine sahip 479 hesabın churn oranı (%21.09), bilinen bölgelerle (APAC: %21.60, LATAM: %20.36, EMEA: %19.04) sayısal olarak benzerdir.",
-            "> - Gözlemlenebilir değişkenlerle eksiklik durumu arasında Ki-kare (Chi-square) bağımsızlık testleri gerçekleştirilmiştir:",
-            f">   - Churn durumu vs Eksik Bölge: $\\chi^2 = {metrics['region_independence_tests']['churn']['chi2_statistic']}$ (dof={metrics['region_independence_tests']['churn']['degrees_of_freedom']})",
-            f">   - Segment vs Eksik Bölge: $\\chi^2 = {metrics['region_independence_tests']['segment']['chi2_statistic']}$ (dof={metrics['region_independence_tests']['segment']['degrees_of_freedom']})",
-            f">   - Edinme Kanalı vs Eksik Bölge: $\\chi^2 = {metrics['region_independence_tests']['acquisition_channel']['chi2_statistic']}$ (dof={metrics['region_independence_tests']['acquisition_channel']['degrees_of_freedom']})",
-            f">   - Plan vs Eksik Bölge: $\\chi^2 = {metrics['region_independence_tests']['plan_name']['chi2_statistic']}$ (dof={metrics['region_independence_tests']['plan_name']['degrees_of_freedom']})",
-            "> - **Önemli Metodolojik Uyarı**: Yalnızca churn oranlarının benzer olması ve gözlemlenebilir değişkenlerle istatistiksel bağımlılık bulunamamış olması, eksikliğin kesin olarak **MCAR (Missing Completely At Random)** olduğunu kanıtlamaz. Gözlemlenemeyen faktörlerin (unobserved confounders) eksiklik sürecini etkileyip etkilemediği mevcut veri seti ile test edilemez. Bu nedenle eksiklik mekanizması mevcut veriler ışığında **belirsiz / kanıtlanmamış** olarak değerlendirilmeli, eksik değerler yapay varsayımlarla doldurulmamalıdır.",
+            "#### Eksik Bölge ile Gözlemlenebilir Değişkenler Arasındaki Ki-kare Bağımsızlık Testleri",
+            "",
+            "Hesaplanan parametreler: $\\chi^2$ test istatistiği, serbestlik derecesi (dof), p-değeri (`correction=False`), minimum beklenen hücre frekansı ve Ki-kare varsayım kontrolü (beklenen frekansı < 5 olan hücre sayısı):",
+            "",
+            "| Değişken | $\\chi^2$ İstatistiği | dof | p-değeri | Min. Beklenen Frekans | Hücre (< 5) | Varsayım Durumu |",
+            "|---|---:|---:|---:|---:|:---:|:---:|",
+        ])
+
+        for var_name, t_res in metrics["region_independence_tests"].items():
+            if t_res["status"] == "success":
+                assump_icon = "Karşılandı ✅" if t_res["assumptions_met"] else "İhlal ⚠️"
+                cells_str = f"{t_res['cells_expected_lt_5']}/{t_res['total_cells']}"
+                md_lines.append(
+                    f"| `{var_name}` | {t_res['chi2_statistic']} | {t_res['degrees_of_freedom']} | "
+                    f"{t_res['p_value']} | {t_res['min_expected_frequency']} | {cells_str} | {assump_icon} |"
+                )
+            else:
+                md_lines.append(f"| `{var_name}` | N/A | N/A | N/A | N/A | N/A | Hesaplanamadı ({t_res.get('error', 'Hata')}) |")
+
+        md_lines.extend([
+            "",
+            "> **İstatistiksel Yorum ve Metodolojik Sınırlar (Eksik Veri Mekanizması)**:",
+            "> - **p-değeri Analizi**: $\\alpha = 0.05$ anlamlılık düzeyinde incelendiğinde, tüm değişkenler için p-değerleri ($p > 0.70$) anlamlılık eşiğinin oldukça üzerindedir. Bu durum, eksik bölge bilgisi ile churn, müşteri segmenti, edinme kanalı veya plan türü arasında istatistiksel olarak anlamlı bir ilişki bulunamadığını gösterir.",
+            "> - **Varsayım Kontrolü**: Minimum beklenen hücre frekanslarının tamamı (en düşüğü 24.91) 5 eşiğinin çok üzerindedir ve beklenen frekansı 5'in altında olan hiçbir hücre yoktur. Cochran varsayımları tam olarak karşılanmaktadır.",
+            "> - **Önemli Metodolojik Uyarı**: Raporlanan p-değerleri keşifsel ve ham p-değerleridir; çoklu karşılaştırma (multiple testing) düzeltmesi uygulanmamıştır. En önemlisi, **gözlemlenebilir değişkenlerle anlamlı bir ilişki bulunamaması (bağımlılık olmaması), eksikliğin tamamen rastgele (MCAR - Missing Completely At Random) olduğunun kanıtı değildir**. Gözlemlenemeyen faktörlerin (unobserved confounders) eksiklik sürecini etkileyip etkilemediği bu veri setiyle test edilemez. Bu nedenle eksiklik mekanizması mevcut veriler ışığında **belirsiz / kanıtlanmamış** olarak değerlendirilmeli, eksik değerler yapay varsayımlarla doldurulmamalıdır.",
             "",
             "### 2.4. Edinme Kanalı (Acquisition Channel) Bazlı Churn Analizi",
             "| Kanal | Toplam Müşteri | Churn Sayısı | Churn Oranı (%) |",

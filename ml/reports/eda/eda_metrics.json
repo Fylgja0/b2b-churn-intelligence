@@ -147,20 +147,44 @@
   },
   "region_independence_tests": {
     "churn": {
+      "status": "success",
       "chi2_statistic": 0.1325,
-      "degrees_of_freedom": 1
+      "degrees_of_freedom": 1,
+      "p_value": 0.7158,
+      "min_expected_frequency": 98.19,
+      "cells_expected_lt_5": 0,
+      "total_cells": 4,
+      "assumptions_met": true
     },
     "segment": {
+      "status": "success",
       "chi2_statistic": 0.1604,
-      "degrees_of_freedom": 2
+      "degrees_of_freedom": 2,
+      "p_value": 0.9229,
+      "min_expected_frequency": 28.98,
+      "cells_expected_lt_5": 0,
+      "total_cells": 6,
+      "assumptions_met": true
     },
     "acquisition_channel": {
+      "status": "success",
       "chi2_statistic": 1.8838,
-      "degrees_of_freedom": 4
+      "degrees_of_freedom": 4,
+      "p_value": 0.7571,
+      "min_expected_frequency": 92.21,
+      "cells_expected_lt_5": 0,
+      "total_cells": 10,
+      "assumptions_met": true
     },
     "plan_name": {
+      "status": "success",
       "chi2_statistic": 1.3764,
-      "degrees_of_freedom": 3
+      "degrees_of_freedom": 3,
+      "p_value": 0.7111,
+      "min_expected_frequency": 24.91,
+      "cells_expected_lt_5": 0,
+      "total_cells": 8,
+      "assumptions_met": true
     }
   }
 }

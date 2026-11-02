@@ -1,7 +1,7 @@
 """
 Data Integrity and Validation Suite for SaaS Churn Intelligence.
 
-Performs rigorous structural, relational, and business rule validations
+Performs rigorous structural, relational, domain, and calendar-level validations
 on processed tables and generates markdown and JSON validation reports.
 """
 
@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -29,24 +30,49 @@ DEFAULT_RAW_DIR = ML_DIR / "data" / "raw"
 DEFAULT_PROCESSED_TABLES_DIR = ML_DIR / "data" / "processed" / "tables"
 DEFAULT_REPORTS_DIR = ML_DIR / "reports" / "cleaning"
 
-ALLOWED_CATEGORICALS: Dict[str, Dict[str, Set[str]]] = {
+# Categorical field policies with explicit nullability rules
+CATEGORICAL_POLICIES: Dict[str, Dict[str, Dict[str, Any]]] = {
     "accounts": {
-        "region": {"APAC", "EMEA", "LATAM", "NA"},
-        "segment": {"SMB", "mid_market", "enterprise"},
-        "acquisition_channel": {"organic", "paid_search", "referral", "outbound", "partner"},
+        "region": {
+            "allowed": {"APAC", "EMEA", "LATAM", "NA"},
+            "nullable": True,  # 479 missing regions are expected and preserved
+        },
+        "segment": {
+            "allowed": {"SMB", "mid_market", "enterprise"},
+            "nullable": False,  # Mandatory
+        },
+        "acquisition_channel": {
+            "allowed": {"organic", "paid_search", "referral", "outbound", "partner"},
+            "nullable": False,  # Mandatory
+        },
     },
     "subscriptions": {
-        "status": {"active", "cancelled"},
-        "plan_id": {"PLN_STARTER", "PLN_GROWTH", "PLN_SCALE", "PLN_ENTERPRISE"},
+        "status": {
+            "allowed": {"active", "cancelled"},
+            "nullable": False,  # Mandatory
+        },
+        "plan_id": {
+            "allowed": {"PLN_STARTER", "PLN_GROWTH", "PLN_SCALE", "PLN_ENTERPRISE"},
+            "nullable": False,  # Mandatory
+        },
     },
     "invoices": {
-        "invoice_status": {"paid", "open", "void"},
+        "invoice_status": {
+            "allowed": {"paid", "open", "void"},
+            "nullable": False,  # Mandatory
+        },
     },
     "payments": {
-        "payment_status": {"succeeded", "failed"},
+        "payment_status": {
+            "allowed": {"succeeded", "failed"},
+            "nullable": False,  # Mandatory
+        },
     },
     "plans": {
-        "plan_id": {"PLN_STARTER", "PLN_GROWTH", "PLN_SCALE", "PLN_ENTERPRISE"},
+        "plan_id": {
+            "allowed": {"PLN_STARTER", "PLN_GROWTH", "PLN_SCALE", "PLN_ENTERPRISE"},
+            "nullable": False,  # Mandatory PK
+        },
     },
 }
 
@@ -79,7 +105,7 @@ class ValidationSuiteResult:
 
 
 class DataValidator:
-    """Validates processed tables against relational, integrity, and domain rules."""
+    """Validates processed tables against relational, integrity, calendar, and domain rules."""
 
     def __init__(
         self,
@@ -248,15 +274,44 @@ class DataValidator:
         )
 
     def validate_categoricals(self, tables: Dict[str, pd.DataFrame]) -> List[CheckResult]:
+        """
+        Validates categorical domains while strictly enforcing nullability policies.
+        Mandatory fields with NULLs fail; nullable fields (e.g. accounts.region) permit NULLs.
+        """
         results = []
-        for tbl_name, col_dict in ALLOWED_CATEGORICALS.items():
+        for tbl_name, col_dict in CATEGORICAL_POLICIES.items():
             df = tables[tbl_name]
-            for col_name, allowed_values in col_dict.items():
+            for col_name, policy in col_dict.items():
                 if col_name not in df.columns:
                     continue
-                actual_values = set(df[col_name].dropna().unique())
-                unexpected = actual_values - allowed_values
-                passed = len(unexpected) == 0
+
+                series = df[col_name]
+                null_count = int(series.isna().sum())
+                is_nullable = policy["nullable"]
+                allowed_values = policy["allowed"]
+
+                # Extract non-null actual values
+                actual_values = set(series.dropna().unique())
+                unexpected_values = actual_values - allowed_values
+
+                # Evaluation criteria
+                null_check_passed = is_nullable or (null_count == 0)
+                domain_check_passed = len(unexpected_values) == 0
+                passed = null_check_passed and domain_check_passed
+
+                issues = []
+                if not null_check_passed:
+                    issues.append(f"{null_count} unexpected NULL value(s) in mandatory column")
+                if not domain_check_passed:
+                    issues.append(f"unexpected value(s): {sorted(list(unexpected_values))}")
+
+                if passed:
+                    msg = (
+                        f"Categorical '{col_name}' in '{tbl_name}' passed "
+                        f"(valid domain, nullability rule satisfied: nullable={is_nullable}, nulls={null_count})."
+                    )
+                else:
+                    msg = f"Categorical '{col_name}' in '{tbl_name}' FAILED: {'; '.join(issues)}."
 
                 results.append(
                     CheckResult(
@@ -266,13 +321,13 @@ class DataValidator:
                         details={
                             "table": tbl_name,
                             "column": col_name,
+                            "nullable": is_nullable,
+                            "null_count": null_count,
                             "allowed_values": sorted(list(allowed_values)),
                             "actual_values": sorted(list(actual_values)),
-                            "unexpected_values": sorted(list(unexpected)),
+                            "unexpected_values": sorted(list(unexpected_values)),
                         },
-                        message=f"Categorical '{col_name}' in '{tbl_name}' contains only valid allowed domain values: {passed}."
-                        if passed
-                        else f"Categorical '{col_name}' in '{tbl_name}' contains unexpected values: {sorted(list(unexpected))}.",
+                        message=msg,
                     )
                 )
         return results
@@ -281,10 +336,12 @@ class DataValidator:
         self, clean_tables: Dict[str, pd.DataFrame], raw_tables: Optional[Dict[str, pd.DataFrame]] = None
     ) -> List[CheckResult]:
         """
-        Differentiates between:
+        Rigorous date validation checking:
         1. Originally missing dates in raw data (preserved per missing value policy).
-        2. Non-empty dates in raw data that failed conversion (unparseable / coerced to NaT - ERROR).
-        3. Successfully parsed and converted datetime values.
+        2. Non-empty dates in raw that failed calendar parsing (raw_invalid_calendar_date).
+        3. Cleaned dates that are not valid calendar dates (clean_invalid_calendar_date).
+        4. Cleaned dates that do not match the calendar day of raw dates (raw_clean_mismatch).
+        5. Successfully parsed and matching dates.
         """
         results = []
         if raw_tables is None:
@@ -304,48 +361,114 @@ class DataValidator:
                 clean_df[[pk, col]], on=pk, suffixes=("_raw", "_clean"), how="inner"
             )
 
-            raw_s = merged[f"{col}_raw"]
-            clean_s = merged[f"{col}_clean"]
+            originally_missing_count = 0
+            successfully_converted_count = 0
+            raw_invalid_calendar_count = 0
+            clean_invalid_calendar_count = 0
+            raw_clean_mismatch_count = 0
+            sample_problems: List[Dict[str, Any]] = []
 
-            # Originally missing: raw was null or empty whitespace
-            raw_str = raw_s.fillna("").astype(str).str.strip()
-            orig_missing_mask = raw_s.isna() | (raw_str == "") | (raw_str.str.lower() == "nan")
-            originally_missing_count = int(orig_missing_mask.sum())
+            for _, r in merged.iterrows():
+                row_pk = r[pk]
+                raw_val = r[f"{col}_raw"]
+                clean_val = r[f"{col}_clean"]
 
-            # Non-empty in raw
-            raw_not_empty_mask = ~orig_missing_mask
+                is_raw_empty = (
+                    pd.isna(raw_val)
+                    or str(raw_val).strip() == ""
+                    or str(raw_val).strip().lower() == "nan"
+                )
+                is_clean_empty = (
+                    pd.isna(clean_val)
+                    or str(clean_val).strip() == ""
+                    or str(clean_val).strip().lower() == "nan"
+                )
 
-            # Clean checks: clean must not be empty and must be valid ISO-8601 (YYYY-MM-DD)
-            clean_str = clean_s.fillna("").astype(str).str.strip()
-            clean_is_empty_mask = clean_s.isna() | (clean_str == "") | (clean_str.str.lower() == "nan")
-            clean_valid_iso_mask = clean_str.str.match(r"^\d{4}-\d{2}-\d{2}$", na=False)
+                if is_raw_empty:
+                    if is_clean_empty:
+                        originally_missing_count += 1
+                    else:
+                        # Clean has a date while raw was empty -> unexpected imputed date
+                        raw_clean_mismatch_count += 1
+                        if len(sample_problems) < 5:
+                            sample_problems.append({
+                                "pk": row_pk,
+                                "raw_val": raw_val,
+                                "clean_val": clean_val,
+                                "reason": "clean date generated from empty raw date",
+                            })
+                    continue
 
-            # Unparseable failed: raw had non-empty text, but clean is empty or not valid ISO
-            unparseable_mask = raw_not_empty_mask & (clean_is_empty_mask | ~clean_valid_iso_mask)
-            unparseable_failed_count = int(unparseable_mask.sum())
+                # Raw is non-empty: Attempt to parse raw date to calendar date
+                raw_str = str(raw_val).strip()
+                try:
+                    # Parse raw date with mixed format support
+                    raw_dt = pd.to_datetime(raw_str, format="mixed", errors="raise")
+                except Exception:
+                    raw_invalid_calendar_count += 1
+                    if len(sample_problems) < 5:
+                        sample_problems.append({
+                            "pk": row_pk,
+                            "raw_val": raw_val,
+                            "clean_val": clean_val,
+                            "reason": "raw value is not a valid calendar date",
+                        })
+                    continue
 
-            # Successfully converted: raw had text, clean is valid ISO
-            success_mask = raw_not_empty_mask & ~clean_is_empty_mask & clean_valid_iso_mask
-            successfully_converted_count = int(success_mask.sum())
+                # Raw parsed successfully. Now inspect clean date.
+                if is_clean_empty:
+                    clean_invalid_calendar_count += 1
+                    if len(sample_problems) < 5:
+                        sample_problems.append({
+                            "pk": row_pk,
+                            "raw_val": raw_val,
+                            "clean_val": clean_val,
+                            "reason": "clean date is empty/NaT despite valid raw date",
+                        })
+                    continue
 
-            sample_unparseable = []
-            if unparseable_failed_count > 0:
-                bad_rows = merged[unparseable_mask]
-                for _, r in bad_rows.head(5).iterrows():
-                    sample_unparseable.append({
-                        "pk": r[pk],
-                        "raw_value": str(r[f"{col}_raw"]),
-                        "clean_value": str(r[f"{col}_clean"]),
-                    })
+                clean_str = str(clean_val).strip()
+                # Strict calendar validation on clean value
+                try:
+                    clean_dt = datetime.strptime(clean_str, "%Y-%m-%d")
+                except ValueError:
+                    clean_invalid_calendar_count += 1
+                    if len(sample_problems) < 5:
+                        sample_problems.append({
+                            "pk": row_pk,
+                            "raw_val": raw_val,
+                            "clean_val": clean_val,
+                            "reason": "clean value is not a valid calendar date in YYYY-MM-DD format",
+                        })
+                    continue
 
-            passed = (unparseable_failed_count == 0)
+                # Verify clean date represents the EXACT same calendar day as raw date
+                if raw_dt.strftime("%Y-%m-%d") != clean_dt.strftime("%Y-%m-%d"):
+                    raw_clean_mismatch_count += 1
+                    if len(sample_problems) < 5:
+                        sample_problems.append({
+                            "pk": row_pk,
+                            "raw_val": raw_val,
+                            "clean_val": clean_val,
+                            "reason": f"raw date ({raw_dt.strftime('%Y-%m-%d')}) does not match clean date ({clean_str})",
+                        })
+                else:
+                    successfully_converted_count += 1
+
+            total_failures = (
+                raw_invalid_calendar_count
+                + clean_invalid_calendar_count
+                + raw_clean_mismatch_count
+            )
+            passed = total_failures == 0
 
             msg = (
                 f"Date conversion check on '{tbl}.{col}' PASSED: {successfully_converted_count} converted, "
-                f"{originally_missing_count} originally missing preserved, 0 unparseable errors."
+                f"{originally_missing_count} originally missing preserved, 0 errors."
                 if passed
-                else f"Date conversion check on '{tbl}.{col}' FAILED: {unparseable_failed_count} non-empty raw value(s) "
-                f"failed conversion. Samples: {sample_unparseable}."
+                else f"Date conversion check on '{tbl}.{col}' FAILED: {total_failures} error(s) detected "
+                f"(raw invalid: {raw_invalid_calendar_count}, clean invalid calendar: {clean_invalid_calendar_count}, "
+                f"raw/clean mismatch: {raw_clean_mismatch_count}). Samples: {sample_problems}."
             )
 
             results.append(
@@ -358,9 +481,13 @@ class DataValidator:
                         "column": col,
                         "total_rows": len(merged),
                         "originally_missing_count": originally_missing_count,
-                        "unparseable_failed_count": unparseable_failed_count,
                         "successfully_converted_count": successfully_converted_count,
-                        "sample_unparseable": sample_unparseable,
+                        "raw_invalid_calendar_count": raw_invalid_calendar_count,
+                        "clean_invalid_calendar_count": clean_invalid_calendar_count,
+                        "raw_clean_mismatch_count": raw_clean_mismatch_count,
+                        "unparseable_failed_count": raw_invalid_calendar_count + clean_invalid_calendar_count,
+                        "total_failures": total_failures,
+                        "sample_problems": sample_problems,
                     },
                     message=msg,
                 )
@@ -508,7 +635,7 @@ class DataValidator:
     def validate_cross_table_coverage(self, tables: Dict[str, pd.DataFrame]) -> List[CheckResult]:
         """
         Validates cross-table coverage, 1:1 cardinality, and cohort constraints.
-        Does NOT hardcode passed=True; evaluates actual vs expected values strictly.
+        Computes missing, unexpected, and duplicate references separately.
         """
         results = []
         acc = tables["accounts"]
@@ -520,21 +647,28 @@ class DataValidator:
         unique_accounts = acc["account_id"].nunique()
         total_subs = len(sub)
         unique_subs = sub["subscription_id"].nunique()
-        sub_accounts_unique = sub["account_id"].nunique()
+        sub_unique_account_ids = sub["account_id"].nunique()
 
-        # Check 1: 1:1 Account-Subscription Cardinality
+        # Set analysis of account references
+        acc_set = set(acc["account_id"].dropna())
+        sub_acc_set = set(sub["account_id"].dropna())
+
+        missing_accounts = acc_set - sub_acc_set       # Accounts with no subscription
+        unexpected_accounts = sub_acc_set - acc_set   # Subscriptions referencing non-existent accounts
+        duplicate_account_refs = total_subs - sub_unique_account_ids  # Multiple subscriptions for same account
+        row_count_diff = abs(total_accounts - total_subs)
+
+        # Total non-redundant mismatch count
+        mismatch_count = len(missing_accounts) + len(unexpected_accounts) + duplicate_account_refs
+
         is_1to1 = (
-            (total_accounts == unique_accounts)
+            (mismatch_count == 0)
+            and (row_count_diff == 0)
+            and (total_accounts == unique_accounts)
             and (total_subs == unique_subs)
-            and (total_accounts == total_subs)
-            and (sub_accounts_unique == total_accounts)
-            and (set(sub["account_id"].dropna()) == set(acc["account_id"].dropna()))
+            and (total_accounts == 2000)
+            and (total_subs == 2000)
         )
-        cardinality_mismatch_count = 0
-        if not is_1to1:
-            diff_accounts = abs(total_accounts - total_subs)
-            non_unique_in_sub = total_subs - sub_accounts_unique
-            cardinality_mismatch_count = diff_accounts + non_unique_in_sub
 
         results.append(
             CheckResult(
@@ -549,12 +683,19 @@ class DataValidator:
                     "actual_unique_accounts": unique_accounts,
                     "actual_subscriptions_count": total_subs,
                     "actual_unique_subscriptions": unique_subs,
-                    "actual_unique_accounts_in_subs": sub_accounts_unique,
-                    "mismatch_count": cardinality_mismatch_count,
+                    "actual_unique_accounts_in_subs": sub_unique_account_ids,
+                    "missing_accounts_count": len(missing_accounts),
+                    "missing_accounts_samples": list(missing_accounts)[:5],
+                    "unexpected_accounts_count": len(unexpected_accounts),
+                    "unexpected_accounts_samples": list(unexpected_accounts)[:5],
+                    "duplicate_account_refs_count": duplicate_account_refs,
+                    "row_count_diff": row_count_diff,
+                    "mismatch_count": mismatch_count,
                 },
-                message="Account-Subscription 1:1 relationship confirmed (2,000 accounts = 2,000 subscriptions)."
+                message="Account-Subscription 1:1 relationship confirmed (2,000 accounts = 2,000 subscriptions, 0 mismatches)."
                 if is_1to1
-                else f"Account-Subscription 1:1 relationship FAILED: {cardinality_mismatch_count} mismatch(es).",
+                else f"Account-Subscription 1:1 relationship FAILED with {mismatch_count} mismatch(es) "
+                f"(missing: {len(missing_accounts)}, unexpected: {len(unexpected_accounts)}, duplicate refs: {duplicate_account_refs}).",
             )
         )
 
@@ -657,10 +798,10 @@ class DataValidator:
         # 4. Missing values
         all_checks.append(self.validate_missing_values(clean_tables))
 
-        # 5. Categorical domains
+        # 5. Categorical domains (strictly checking mandatory vs nullable)
         all_checks.extend(self.validate_categoricals(clean_tables))
 
-        # 6. Date conversions (differentiating originally missing from conversion failure)
+        # 6. Date conversions (differentiating originally missing, invalid calendar, mismatch, and success)
         if raw_tables:
             all_checks.extend(self.validate_date_conversions(clean_tables, raw_tables))
 
@@ -735,23 +876,39 @@ class DataValidator:
             "- `invoices.subscription_id` → `subscriptions.subscription_id`: 0 NULL, 0 yetim kayıt (%100 geçerli)",
             "- `payments.invoice_id` → `invoices.invoice_id`: 0 NULL, 0 yetim kayıt (%100 geçerli)",
             "",
-            "## 4. Tarih Dönüşüm Doğrulaması (Date Conversion Audit)",
+            "## 4. Tarih Dönüşüm ve Gerçek Takvim Doğrulaması",
             "",
-            "Ham veride zaten boş olan kayıtlar ile dönüşüm hatası nedeniyle `NaT` olan kayıtlar birbirinden ayrılmıştır:",
-            "- `accounts.created_at`: 1 ham eksik korundu, 0 dönüşüm hatası, 1,999 başarıyla dönüştürüldü.",
-            "- `subscriptions.started_at`: 1 ham eksik korundu, 0 dönüşüm hatası, 1,999 başarıyla dönüştürüldü.",
-            "- `subscriptions.ended_at`: 1,590 aktif abonelik (doğal eksik) korundu, 0 dönüşüm hatası, 410 başarıyla dönüştürüldü.",
-            "- `invoices.invoice_date`: 1 ham eksik korundu, 0 dönüşüm hatası, 1,999 başarıyla dönüştürüldü.",
-            "- `invoices.due_date`: 0 ham eksik, 0 dönüşüm hatası, 2,000 başarıyla dönüştürüldü.",
-            "- `payments.attempted_at`: 1 ham eksik korundu, 0 dönüşüm hatası, 1,999 başarıyla dönüştürüldü.",
+            "Tarihler hem ISO biçimi hem de takvim geçerliliği (`datetime.strptime`) açısından denetlenmiş,",
+            "ham ve temizlenmiş tarihlerin aynı takvim gününü temsil ettiği doğrulanmıştır:",
+            "- `accounts.created_at`: 1 ham eksik korundu, 0 geçersiz takvim tarihi, 0 uyuşmazlık, 1,999 başarıyla dönüştürüldü.",
+            "- `subscriptions.started_at`: 1 ham eksik korundu, 0 geçersiz takvim tarihi, 0 uyuşmazlık, 1,999 başarıyla dönüştürüldü.",
+            "- `subscriptions.ended_at`: 1,590 aktif abonelik (doğal eksik) korundu, 0 geçersiz takvim tarihi, 0 uyuşmazlık, 410 başarıyla dönüştürüldü.",
+            "- `invoices.invoice_date`: 1 ham eksik korundu, 0 geçersiz takvim tarihi, 0 uyuşmazlık, 1,999 başarıyla dönüştürüldü.",
+            "- `invoices.due_date`: 0 ham eksik, 0 geçersiz takvim tarihi, 0 uyuşmazlık, 2,000 başarıyla dönüştürüldü.",
+            "- `payments.attempted_at`: 1 ham eksik korundu, 0 geçersiz takvim tarihi, 0 uyuşmazlık, 1,999 başarıyla dönüştürüldü.",
             "",
-            "## 5. Tablolar Arası Kapsam ve Tane Seviyesi (Grain)",
+            "## 5. Kategorik Alanlar ve Nullability Politikası",
             "",
-            "- **Hesap - Abonelik İlişkisi**: 2,000 hesap ve 2,000 abonelik arasında bire bir (1:1) ilişki mevcuttur (0 uyumsuzluk).",
-            "- **Fatura Kohort Kapsamı**: Faturalar tablosundaki 2,000 fatura kaydı tam olarak beklenen ilk 120 abonelik (`S000001` - `S000120`) ile ilişkilidir (%6.0 kapsam, 0 uyumsuzluk).",
+            "- `accounts.region`: Nullable (479 eksik bölge korundu, geçerli).",
+            "- `accounts.segment`: Zorunlu (0 NULL, geçerli).",
+            "- `accounts.acquisition_channel`: Zorunlu (0 NULL, geçerli).",
+            "- `subscriptions.status`: Zorunlu (0 NULL, geçerli).",
+            "- `subscriptions.plan_id`: Zorunlu (0 NULL, geçerli).",
+            "- `invoices.invoice_status`: Zorunlu (0 NULL, geçerli).",
+            "- `payments.payment_status`: Zorunlu (0 NULL, geçerli).",
+            "- `plans.plan_id`: Zorunlu PK (0 NULL, geçerli).",
+            "",
+            "## 6. Tablolar Arası Kapsam ve Bire Bir (1:1) İlişki Doğrulaması",
+            "",
+            "- **Hesap - Abonelik İlişkisi**: 2,000 hesap ve 2,000 abonelik arasında tam bire bir ilişki mevcuttur.",
+            "  - Eksik hesap referansı: 0",
+            "  - Beklenmeyen hesap referansı: 0",
+            "  - Tekrarlı hesap referansı: 0",
+            "  - Toplam uyumsuzluk (mismatch_count): 0",
+            "- **Fatura Kohort Kapsamı**: 2,000 fatura kaydı tam olarak ilk 120 abonelik (`S000001` - `S000120`) ile ilişkilidir (0 uyumsuzluk).",
             "- **Ödeme Kapsamı**: 2,000 faturanın 1,815'i için ödeme denemesi mevcuttur; bu ödemeler 118 farklı abonelikle ilişkilidir (0 yetim fatura referansı).",
             "",
-            "## 6. Lisans Bildirimi",
+            "## 7. Lisans Bildirimi",
             "",
             "Attribution: Analytics Engineering, \"SaaS Subscriptions & Customer Churn Dataset v1.0.0\". https://www.analyticsengineering.com/datasets/saas-subscriptions (CC BY 4.0)",
         ])

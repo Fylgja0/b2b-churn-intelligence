@@ -147,10 +147,10 @@ def build_report_content(m: Dict[str, Any]) -> Dict[str, Any]:
                     (
                         f"Bu çalışmanın temel araştırma sorusu şudur: B2B SaaS portföyünde hangi abonelikler, "
                         f"ne zaman ve ne kadar gelir (MRR) etkisiyle kaybedilmektedir? Analizde {prov['source']} "
-                        f"({prov['license']}) kaynağına ait sentetik (simüle) veri seti kullanılmıştır. Veri seti "
-                        f"01.01.2023 – 31.12.2025 (2023–2025) dönemini kapsamakta olup toplam {tot_sub} abonelik "
-                        f"kaydından ({act_sub} aktif, {ch_sub} iptal edilmiş) oluşmaktadır ve temel gözlem birimi "
-                        f"aboneliktir."
+                        f"({prov['license']}) kaynağına ait sentetik (simüle) veri seti kullanılmıştır. Kaynakta "
+                        f"beyan edilen veri kapsamı 01.01.2023 – 31.12.2025 (2023–2025 dönemi, bağımsız doğrulanmamış) "
+                        f"olup toplam {tot_sub} abonelik kaydından ({act_sub} aktif, {ch_sub} iptal edilmiş) "
+                        f"oluşmaktadır ve temel gözlem birimi aboneliktir."
                     )
                 ],
                 "bullets": [],
@@ -167,10 +167,11 @@ def build_report_content(m: Dict[str, Any]) -> Dict[str, Any]:
                         "uygun seçilmiştir."
                     ),
                     (
-                        f"\"Plan Bazında MRR ve Kayıp MRR Payı\": Her abonelik planının toplam aylık gelir (${tot_mrr}) "
+                        f"\"Plan Bazında MRR ve Kayıp MRR Payı\": Her abonelik planının toplam aylık gelir ({tot_mrr} MRR) "
                         f"içindeki payı ile kaybedilen gelir (%{mrr_ch_pct}) içindeki payının orantılı olup olmadığını "
-                        "sorgular. İki farklı oransal ölçüyü (Toplam MRR Payı % ve Kaybedilen MRR Payı %) dört plan "
-                        "kategorisi arasında doğrudan karşılaştırmak amacıyla iki gruplu çubuk grafik kullanılmıştır."
+                        "sorgular. İki farklı oransal büyüklüğü (Toplam MRR Payı %: Plan MRR / Portföy MRR ve Kaybedilen "
+                        "MRR Payı %: Plan Kayıp MRR / Toplam Kayıp MRR) dört plan kategorisi arasında doğrudan "
+                        "karşılaştırmak amacıyla iki gruplu çubuk grafik kullanılmıştır."
                     ),
                     (
                         f"\"Hangi Planda Kayıp Oranı Daha Yüksek?\": Enterprise (Kurumsal Plan) grubunun en yüksek "
@@ -179,16 +180,16 @@ def build_report_content(m: Dict[str, Any]) -> Dict[str, Any]:
                         "amacıyla yatay çubuk grafik ve kesikli referans çizgisi tercih edilmiştir."
                     ),
                     (
-                        f"\"Segmentlere Göre Kayıp Farklılaşıyor mu?\": Müşteri ölçeği büyüdükçe churn oranında fark "
-                        f"olup olmadığını (Orta Ölçekli Pazar en düşük: %{mid_seg_rate}) sorgular. Kategorileri sıralı "
-                        f"ve ortak ölçekte genel ortalama (%{ch_pct}) ile karşılaştırma amacıyla yatay çubuk grafik ve "
-                        "kesikli referans çizgisi kullanılmıştır."
+                        f"\"Segmentlere Göre Kayıp Farklılaşıyor mu?\": KOBİ, Kurumsal Müşteri ve Orta Ölçekli Pazar "
+                        f"kategorileri arasında müşteri kaybı oranının farklılaşıp farklılaşmadığını sorgular. "
+                        f"Kategorileri sıralı ve ortak ölçekte genel ortalama (%{ch_pct}) ile karşılaştırma amacıyla "
+                        "yatay çubuk grafik ve kesikli referans çizgisi kullanılmıştır."
                     ),
                     (
-                        f"\"Edinme Kanalı Kaybı Etkiliyor mu?\": Müşteri kazanım kanalının churn ile ilişkisini (İş "
-                        f"Ortağı %{part_ch_rate} ve Tavsiye %{ref_ch_rate} düşük) değerlendirir. Kategorileri sıralı "
-                        f"ve ortak ölçekte genel ortalama (%{ch_pct}) ile karşılaştırma amacıyla yatay çubuk grafik ve "
-                        "kesikli referans çizgisi seçilmiştir."
+                        f"\"Edinme Kanalına Göre Kayıp Oranı Farklılaşıyor mu?\": Müşteri kazanım kanalları arasında "
+                        f"kayıp oranının farklılaşıp farklılaşmadığını değerlendirir. Kategorileri sıralı ve ortak "
+                        f"ölçekte genel ortalama (%{ch_pct}) ile karşılaştırma amacıyla yatay çubuk grafik ve kesikli "
+                        "referans çizgisi seçilmiştir."
                     ),
                 ],
             },
@@ -199,33 +200,34 @@ def build_report_content(m: Dict[str, Any]) -> Dict[str, Any]:
                     (
                         f"Genel Abonelik ve Gelir Kaybı: Portföydeki {tot_sub} aboneliğin {ch_sub} adedi iptal edilmiş "
                         f"olup genel müşteri kaybı (churn) oranı %{ch_pct} ({ch_sub}/{tot_sub}) düzeyindedir (aktif: "
-                        f"{act_sub} / %{act_pct}). Toplam ${tot_mrr} MRR içinde toplam MRR kaybı oranı %{mrr_ch_pct} "
-                        f"olup gelir kaybı abonelik kaybının biraz üzerindedir (%{mrr_ch_pct} ile %{ch_pct}; fark "
-                        f"{mrr_vs_sub_diff} puan)."
+                        f"{act_sub} / %{act_pct}). Toplam {tot_mrr} MRR portföyü içinde iptal edilen aboneliklerin "
+                        f"MRR payı %{mrr_ch_pct} (146.738 MRR) olup portföy kayıp oranı abonelik sayısındaki kayıp "
+                        f"payının biraz üzerindedir (%{mrr_ch_pct} ile %{ch_pct}; fark {mrr_vs_sub_diff} puan)."
                     ),
                     (
                         f"Zamana Bağlı Elde Tutma Eğrisi: Kaplan-Meier elde tutma oranı 180. günde %{km_180}, 365. günde "
                         f"(12. ay) %{km_365} ve 540. günde (18. ay) %{km_540} düzeyindedir. İlk 90 günde neredeyse hiç "
-                        f"iptal görülmezken, takip eden her 6 aylık dilimde sağkalım kaybı hızlanarak artmakta "
-                        f"({dr_1} → {dr_2} → {dr_3} puan) ve 18. aya kadar eğride bir plato görünmemektedir."
+                        f"iptal görülmezken (1 olay), her 6 aylık dilimde sağkalım kaybı hızlanmakta ({dr_1} → {dr_2} "
+                        f"→ {dr_3} puan) ve ilgili döneme ulaşanlar için koşullu kayıp riski de artmaktadır "
+                        f"(%4,76 → %8,53 → %10,42)."
                     ),
                     (
                         f"Enterprise Planının Gelir Etkisi: Enterprise (Kurumsal Plan) tüm aboneliklerin yalnızca "
                         f"%{ent_sub_share}'sini ({ent_cnt}/{tot_sub}) oluşturmasına karşın toplam MRR'nin "
                         f"%{ent_mrr_share}'unu ve kaybedilen toplam MRR'nin %{ent_lost_share}'ini "
                         f"oluşturmaktadır. Bu planda churn oranı %{ent_ch_rate} olmakla birlikte diğer planlardan "
-                        f"istatistiksel olarak anlamlı biçimde yüksek değildir (Fisher p = {p_fisher}); gelir etkisi "
-                        "büyük ölçüde birim fiyattan gelmektedir."
+                        f"istatistiksel olarak anlamlı biçimde yüksek değildir (Fisher kesin test p = {p_fisher}); gelir etkisi "
+                        "büyük ölçüde yüksek birim fiyattan gelmektedir."
                     ),
                     (
-                        f"Kategorik Kırılımlarda İstatistiksel Anlamsızlık: Plan (Enterprise %{ent_ch_rate}, Ölçek "
+                        f"Kategorik Kırılımlarda İstatistiksel Anlamlılık: Plan (Enterprise %{ent_ch_rate}, Ölçek "
                         f"%{scale_rate}, Büyüme %{growth_rate}, Başlangıç %{starter_rate}; Ki-kare p = {p_plan}), segment "
                         f"(KOBİ %{smb_seg_rate}, Kurumsal Müşteri %{ent_seg_rate}, Orta Ölçekli Pazar %{mid_seg_rate}; "
                         f"Ki-kare p = {p_seg}) ve edinme kanalı (Organik %{org_ch_rate}, Giden Pazarlama %{out_ch_rate}, "
                         f"Ücretli Arama %{paid_ch_rate}, Tavsiye %{ref_ch_rate}, İş Ortağı %{part_ch_rate}; Ki-kare "
-                        f"p = {p_ch}) farkları küçüktür ve istatistiksel olarak anlamlı değildir (p > 0,05). En düşük "
-                        f"oranlar Orta Ölçekli Pazar (%{mid_seg_rate}), İş Ortağı (%{part_ch_rate}) ve Tavsiye "
-                        f"(%{ref_ch_rate}) gruplarında olup yalnızca gözlemseldir."
+                        f"p = {p_ch}) analizlerinde p > 0,05 bulunmuştur. Bu örneklemde gruplar arasında istatistiksel "
+                        f"olarak anlamlı bir farklılık bulunduğuna ilişkin yeterli kanıt elde edilememiştir; bu durum "
+                        f"grupların eşit olduğunu kanıtlamaz (Cochran kuralı gereği tüm beklenen frekanslar > 5'tir)."
                     ),
                 ],
             },
@@ -236,12 +238,11 @@ def build_report_content(m: Dict[str, Any]) -> Dict[str, Any]:
                         f"Analiz bulguları birlikte değerlendirildiğinde, müşteri kaybının belirli bir abonelik planı, "
                         f"müşteri segmenti veya edinme kanalına özgü yapısal bir ayrışmadan (Ki-kare p = {p_plan} / "
                         f"{p_seg} / {p_ch}) çok, zamana yayılan bir elde tutma sorunu ile ilişkili olduğu görülmektedir. "
-                        f"İlk 90 günde neredeyse hiç iptal görülmezken iptaller 6. aydan sonra hızlanmakta ({dr_1} → "
-                        f"{dr_2} → {dr_3} puan) ve 18. aya kadar terk riski azalmamaktadır. Benzer biçimde Enterprise "
-                        f"planının önceliği, daha yüksek bir terk eğiliminden (Fisher p = {p_fisher}) değil, portföy "
-                        f"gelirinin %{ent_mrr_share}'unu ve kayıp gelirin %{ent_lost_share}'ini barındıran yüksek gelir "
-                        "ağırlığından kaynaklanmaktadır; bu bulgular nedensellik iddiası taşımamakta olup gözlemsel "
-                        "ilişkisellik çerçevesinde yorumlanmalıdır."
+                        f"İlk 90 günde iptal görülmezken kayıplar 6. aydan sonra hızlanmakta ({dr_1} → {dr_2} → {dr_3} "
+                        f"puan) ve 18. aya kadar terk riski azalmamaktadır. Benzer biçimde Enterprise planının önceliği, "
+                        f"daha yüksek bir terk eğiliminden (Fisher p = {p_fisher}) değil, portföy gelirinin %{ent_mrr_share}'unu "
+                        f"ve kayıp gelirin %{ent_lost_share}'ini barındıran yüksek gelir ağırlığından kaynaklanmaktadır; "
+                        "bu bulgular nedensellik iddiası taşımamakta olup gözlemsel ilişkisellik çerçevesinde yorumlanmalıdır."
                     ),
                     (
                         f"Sınırlılıklar: Çalışma; verinin sentetik (simüle) olması, fatura (%{bil_pct}; {bil_cnt} kayıt) "
@@ -250,11 +251,11 @@ def build_report_content(m: Dict[str, Any]) -> Dict[str, Any]:
                         "testlerinin çoklu test düzeltmesiz keşifsel nitelik taşıması nedeniyle sınırlılık içerir."
                     ),
                     (
-                        f"Genel Sonuç: Enterprise ve Ölçek planları birlikte toplam MRR'nin %{ent_scale_tot_str}'sını "
-                        f"ve kayıp MRR'nin %{ent_scale_lost_str}'ünü oluşturmaktadır. Ölçek planının kayıp MRR payı "
-                        f"(%{scale_lost_share}) kendi MRR payının (%{scale_mrr_share}) altında olduğundan, Ölçek "
+                        f"Genel Sonuç: Enterprise ve Ölçek planları birlikte toplam MRR'nin %{ent_scale_tot_str}'sini "
+                        f"ve kayıp MRR'nin %{ent_scale_lost_str}'sini oluşturmaktadır. Ölçek planının kayıp MRR payı "
+                        f"(%{scale_lost_share}) kendi MRR payının (%{scale_mrr_share}) altında kaldığından Ölçek "
                         f"yalnızca gelir ağırlığı nedeniyle izleme önceliği taşırken, Enterprise ise hem gelir ağırlığı "
-                        f"(%{ent_mrr_share}) hem de yüksek (istatistiksel olarak anlamsız) churn oranı (%{ent_ch_rate}) "
+                        f"(%{ent_mrr_share}) hem de yüksek (istatistiksel olarak anlamlı olmayan) churn oranı (%{ent_ch_rate}) "
                         "nedeniyle izlenmelidir; bu bulgular nedensellik iddiası taşımamaktadır."
                     ),
                 ],
@@ -499,7 +500,7 @@ def verify_report_numbers_against_json(content: Dict[str, Any], m: Dict[str, Any
         "Plan Bazında MRR ve Kayıp MRR Payı",
         "Hangi Planda Kayıp Oranı Daha Yüksek?",
         "Segmentlere Göre Kayıp Farklılaşıyor mu?",
-        "Edinme Kanalı Kaybı Etkiliyor mu?",
+        "Edinme Kanalına Göre Kayıp Oranı Farklılaşıyor mu?",
         "sansürlü gözlemleri hesaba katan",
         fmt_int(kpis["total_subscriptions"]),
         fmt_int(kpis["active_subscriptions"]),

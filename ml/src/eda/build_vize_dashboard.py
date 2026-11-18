@@ -315,11 +315,14 @@ def load_and_validate_data(
     chi_square_tests: Dict[str, Any] = {}
     for col_key in ["plan_name", "segment", "acquisition_channel"]:
         ct = pd.crosstab(df[col_key], df["churn"])
-        chi2_stat, p_val, dof, _ = chi2_contingency(ct)
+        chi2_stat, p_val, dof, exp_grid = chi2_contingency(ct)
+        min_exp = float(exp_grid.min())
         chi_square_tests[col_key] = {
             "chi2_statistic": round(float(chi2_stat), 4),
             "p_value": round(float(p_val), 4),
             "degrees_of_freedom": int(dof),
+            "min_expected_frequency": round(min_exp, 2),
+            "cochran_satisfied": bool(min_exp >= 5.0),
             "significant_at_0_05": bool(p_val < 0.05),
         }
 
@@ -790,20 +793,22 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
 
     attention_text = (
         f"• İstatistiksel Anlamlılık: Plan (p = {p_plan_s}), segment (p = {p_seg_s}) ve kanal (p = {p_ch_s})\n"
-        f"  kayıp farkları anlamlı değildir (Ki-kare p > 0,05); kesin sonuç olarak yorumlanmamalıdır.\n"
-        f"• Gözlem Süresi ve Sansürleme: Süre ve kohort karşılaştırmaları, yeni abonelerin\n"
-        f"  gözlem süresinin kısa olması nedeniyle yanlı olabilir; bu yüzden elde tutma eğrisi\n"
-        f"  (Kaplan-Meier) kullanılmıştır.\n"
-        f"• Enterprise ve diğer planlar karşılaştırması (Fisher kesin test): p = {p_fisher_s}; fark anlamlı değil."
+        f"  farkları için p > 0,05'tir. Bu örneklemde gruplar arasında istatistiksel olarak\n"
+        f"  anlamlı bir farklılık bulunduğuna ilişkin yeterli kanıt elde edilememiştir;\n"
+        f"  bu durum grupların birbirine eşit olduğunu kanıtlamaz.\n"
+        f"• Gözlem Süresi ve Sansürleme: Süre karşılaştırmaları yeni abonelerin gözlem\n"
+        f"  süresinin kısa olması nedeniyle yanlı olabilir; bu yüzden sağdan sansürlü\n"
+        f"  gözlemleri hesaba katan Kaplan-Meier elde tutma eğrisi kullanılmıştır.\n"
+        f"• Enterprise ve Diğer Planlar (Fisher kesin test): p = {p_fisher_s}; fark anlamlı değildir."
     )
     ax.text(
-        0.014, 0.76,
+        0.014, 0.79,
         attention_text,
-        fontsize=8.0,
+        fontsize=7.2,
         color="#1E293B",
         va="top",
         ha="left",
-        linespacing=1.15,
+        linespacing=1.06,
         transform=ax.transAxes,
     )
 
@@ -851,21 +856,22 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
 
     provenance_text = (
         f"• Veri Yapısı: Sentetik (simüle) veri seti | Gözlem birimi: {tot_str} abonelik |\n"
-        f"  Kapsam: 01.01.2023–31.12.2025.\n"
+        f"  Kaynakta beyan edilen veri kapsamı: 01.01.2023–31.12.2025 (doğrulanmamış).\n"
         f"• Eksik Bölge ({reg_pct_s}): {dq['missing_region_count']} abonelikte bölge eksiktir; yapay tamamlanmamış,\n"
         f"  veri setindeki haliyle eksik olarak korunmuştur.\n"
-        f"• Fatura & Ödeme ({bil_pct_s} / {pay_pct_s}): Fatura ({dq['billing_data_coverage_count']}) ve ödeme ({dq['payment_data_coverage_count']}) verisi ~%6'lık\n"
-        f"  alt kohortu temsil eder; tüm popülasyona genellenemez. Kaynak: Analytics\n"
-        f"  Engineering, \"SaaS Subscriptions & Customer Churn Dataset v1.0.0\" (CC BY 4.0)."
+        f"• Fatura & Ödeme ({bil_pct_s} / {pay_pct_s}): Fatura ({dq['billing_data_coverage_count']}) ve ödeme ({dq['payment_data_coverage_count']}) verisi ~%6'lık alt\n"
+        f"  kohortta bulunmaktadır; genellenemez. Kaynak: Analytics Engineering,\n"
+        f"  \"SaaS Subscriptions & Churn Dataset v1.0.0\" (CC BY 4.0).\n"
+        f"  Bağlantı: https://www.analyticsengineering.com/datasets/saas-subscriptions"
     )
     ax.text(
-        0.516, 0.75,
+        0.516, 0.79,
         provenance_text,
-        fontsize=8.0,
+        fontsize=7.2,
         color="#1E293B",
         va="top",
         ha="left",
-        linespacing=1.14,
+        linespacing=1.06,
         transform=ax.transAxes,
     )
 
@@ -970,11 +976,12 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
             "val_color": "#B91C1C",
         },
         {
-            "title": "TOPLAM MRR KAYBI (%)",
+            "title": "İPTAL EDİLEN MRR PAYI (%)",
+            "title_fontsize": 7.1,
             "value": f"%{kpis_data['mrr_churn_pct']:.2f}".replace(".", ","),
-            "sub": "İptal edilenlerin toplam MRR\niçindeki payı (2023-2025)",
-            "sub_fontsize": 7.2,
-            "val_y": 0.54,
+            "sub": "İptal edilen aboneliklerin\nMRR / Toplam MRR oranı",
+            "sub_fontsize": 6.8,
+            "val_y": 0.52,
             "sub_y": 0.06,
             "accent": COLOR_CHURN,
             "val_color": "#B91C1C",
@@ -1022,7 +1029,7 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
         ax_kpi.text(
             x0 + 0.009, 0.88,
             kpi["title"],
-            fontsize=8.0,
+            fontsize=kpi.get("title_fontsize", 8.0),
             fontweight="bold",
             color="#475569",
             va="top",
@@ -1054,7 +1061,7 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     # -------------------------------------------------------------------------
     # 3. BÖLÜM: ÜST GRAFİK SATIRI (1A: KAPLAN-MEIER, 1B: PLAN BAZINDA MRR PAYI)
     # -------------------------------------------------------------------------
-    tot_mrr_str = f"${kpis_data['total_mrr']:,.0f}".replace(",", ".")
+    tot_mrr_str = f"{kpis_data['total_mrr']:,.0f}".replace(",", ".")
     mrr_loss_str = f"%{kpis_data['mrr_churn_pct']:.2f}".replace(".", ",")
     km_365_str = f"%{kpis_data['retention_12m_pct']:.2f}".replace(".", ",")
 
@@ -1073,8 +1080,8 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     ax_card2 = fig.add_axes([0.510, 0.484, 0.460, 0.280])
     draw_card_frame(
         ax_card2,
-        title=f"Plan Bazında MRR ve Kayıp MRR Payı (Kayıp: {mrr_loss_str})",
-        subtitle=f"Toplam MRR ({tot_mrr_str}) içinde her planın gelir payı ile kaybedilen MRR payı.",
+        title=f"Plan Bazında MRR ve Kayıp MRR Payı (Kayıp Payı: {mrr_loss_str})",
+        subtitle="Toplam MRR Payı: Plan/Portföy; Kaybedilen MRR Payı: Plan Kayıp/Toplam Kayıp.",
         title_fontsize=8.8,
     )
     ax_g2 = fig.add_axes([0.558, 0.556, 0.398, 0.168])
@@ -1137,11 +1144,11 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     ax_card5 = fig.add_axes([0.668, 0.204, 0.302, 0.264])
     draw_card_frame(
         ax_card5,
-        title="Edinme Kanalı Kaybı Etkiliyor mu?",
+        title="Edinme Kanalına Göre Kayıp Oranı Farklılaşıyor mu?",
         subtitle=f"Kanal bazında müşteri kaybı oranı (Ki-kare p={chi_p_ch}).",
         has_ref_badge=True,
         baseline=baseline_val,
-        title_fontsize=8.5,
+        title_fontsize=8.0,
     )
     ch_items = [
         {

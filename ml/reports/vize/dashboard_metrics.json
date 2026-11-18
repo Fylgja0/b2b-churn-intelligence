@@ -1349,18 +1349,24 @@
       "chi2_statistic": 1.6381,
       "p_value": 0.6508,
       "degrees_of_freedom": 3,
+      "min_expected_frequency": 21.32,
+      "cochran_satisfied": true,
       "significant_at_0_05": false
     },
     "segment": {
       "chi2_statistic": 4.2264,
       "p_value": 0.1208,
       "degrees_of_freedom": 2,
+      "min_expected_frequency": 24.8,
+      "cochran_satisfied": true,
       "significant_at_0_05": false
     },
     "acquisition_channel": {
       "chi2_statistic": 4.61,
       "p_value": 0.3297,
       "degrees_of_freedom": 4,
+      "min_expected_frequency": 78.92,
+      "cochran_satisfied": true,
       "significant_at_0_05": false
     },
     "enterprise_vs_others_fisher": {

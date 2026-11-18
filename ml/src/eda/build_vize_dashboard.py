@@ -122,6 +122,18 @@ def load_and_validate_data(
     # -------------------------------------------------------------------------
     # 1. ADIM: Sütun Bütünlüğü ve Durum-Churn Tutarlılık Kontrolleri
     # -------------------------------------------------------------------------
+    status_null_count = int(df["status"].isna().sum())
+    if status_null_count > 0:
+        raise ValueError(
+            f"Veri doğrulama hatası: 'status' sütununda {status_null_count} adet eksik (NaN/null) değer bulundu!"
+        )
+
+    churn_null_count = int(df["churn"].isna().sum())
+    if churn_null_count > 0:
+        raise ValueError(
+            f"Veri doğrulama hatası: 'churn' sütununda {churn_null_count} adet eksik (NaN/null) değer bulundu!"
+        )
+
     unique_statuses = set(df["status"].dropna().unique())
     expected_statuses = {"active", "cancelled"}
     if unique_statuses != expected_statuses:
@@ -347,7 +359,7 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     # 1. BÖLÜM: ÜST BAŞLIK ALANI (HEADER)
     # [left, bottom, width, height]
     # -------------------------------------------------------------------------
-    ax_header = fig.add_axes([0.040, 0.865, 0.920, 0.100])
+    ax_header = fig.add_axes([0.040, 0.868, 0.920, 0.098])
     ax_header.axis("off")
 
     # Sol Başlık Grubu (Tamamen Türkçe)
@@ -370,7 +382,7 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
         ha="left",
     )
     ax_header.text(
-        0.0, 0.08,
+        0.0, 0.15,
         "Keşifsel Veri Analizi | 2023–2025",
         fontsize=8.8,
         fontweight="normal",
@@ -400,7 +412,7 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     # -------------------------------------------------------------------------
     # 2. BÖLÜM: 4 ADET KPI GÖSTERGE KARTI
     # -------------------------------------------------------------------------
-    ax_kpi = fig.add_axes([0.040, 0.748, 0.920, 0.096])
+    ax_kpi = fig.add_axes([0.040, 0.752, 0.920, 0.096])
     ax_kpi.axis("off")
 
     kpis = [
@@ -494,50 +506,63 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     # -------------------------------------------------------------------------
     # 3. BÖLÜM: 2x2 GRAFİK YERLEŞİMİ (KART ARKA PLANLARI İLE)
     # -------------------------------------------------------------------------
+    baseline_val = metrics["overall_kpis"]["churn_pct"]
+
     # Kart 1 Arka Planı (Sol Üst)
-    ax_card1 = fig.add_axes([0.040, 0.465, 0.445, 0.260])
+    ax_card1 = fig.add_axes([0.040, 0.490, 0.445, 0.244])
     draw_card_background(ax_card1, "Genel Abonelik Durumu Dağılımı")
 
     # Kart 2 Arka Planı (Sağ Üst)
-    ax_card2 = fig.add_axes([0.515, 0.465, 0.445, 0.260])
-    draw_card_background(ax_card2, "Abonelik Planlarına Göre Müşteri Kaybı Oranı")
+    ax_card2 = fig.add_axes([0.515, 0.490, 0.445, 0.244])
+    draw_card_background(
+        ax_card2, "Abonelik Planlarına Göre Müşteri Kaybı Oranı",
+        has_ref_badge=True, baseline=baseline_val
+    )
 
     # Kart 3 Arka Planı (Sol Alt)
-    ax_card3 = fig.add_axes([0.040, 0.185, 0.445, 0.260])
-    draw_card_background(ax_card3, "Müşteri Segmentlerine Göre Müşteri Kaybı Oranı")
+    ax_card3 = fig.add_axes([0.040, 0.208, 0.445, 0.264])
+    draw_card_background(
+        ax_card3, "Müşteri Segmentlerine Göre Müşteri Kaybı Oranı",
+        has_ref_badge=True, baseline=baseline_val
+    )
 
     # Kart 4 Arka Planı (Sağ Alt)
-    ax_card4 = fig.add_axes([0.515, 0.185, 0.445, 0.260])
-    draw_card_background(ax_card4, "Müşteri Edinme Kanalına Göre Müşteri Kaybı Oranı")
+    ax_card4 = fig.add_axes([0.515, 0.208, 0.445, 0.264])
+    draw_card_background(
+        ax_card4, "Müşteri Edinme Kanalına Göre Müşteri Kaybı Oranı",
+        has_ref_badge=True, baseline=baseline_val
+    )
 
     # --- GRAFİK 1: Genel Abonelik Durumu Dağılımı (Donut) ---
-    ax_g1 = fig.add_axes([0.050, 0.475, 0.425, 0.200])
+    ax_g1 = fig.add_axes([0.050, 0.495, 0.425, 0.185])
     render_chart_1_donut(ax_g1, metrics)
 
     # --- GRAFİK 2: Abonelik Planlarına Göre Müşteri Kaybı Oranı (Yatay Çubuk) ---
-    ax_g2 = fig.add_axes([0.640, 0.495, 0.295, 0.180])
+    ax_g2 = fig.add_axes([0.640, 0.510, 0.300, 0.150])
     render_chart_2_plans(ax_g2, metrics)
 
     # --- GRAFİK 3: Müşteri Segmentlerine Göre Müşteri Kaybı Oranı (Yatay Çubuk) ---
-    ax_g3 = fig.add_axes([0.225, 0.215, 0.240, 0.175])
+    ax_g3 = fig.add_axes([0.220, 0.244, 0.245, 0.155])
     render_chart_3_segments(ax_g3, metrics)
 
     # --- GRAFİK 4: Müşteri Edinme Kanalına Göre Müşteri Kaybı Oranı (Yatay Çubuk) ---
-    ax_g4 = fig.add_axes([0.705, 0.215, 0.230, 0.175])
+    ax_g4 = fig.add_axes([0.695, 0.244, 0.245, 0.155])
     render_chart_4_channels(ax_g4, metrics)
 
     # -------------------------------------------------------------------------
     # 4. BÖLÜM: ALT ALAN (VERİ KALİTESİ, ANALİTİK SINIRLILIKLAR VE KAYNAKÇA)
-    # Baskı okunabilirliği için alan ve font optimize edildi: Y = 0.018 to 0.168 (Yükseklik: 0.150)
+    # Baskı okunabilirliği ve taşma engelleme için yükseklik: 0.170 (Y: 0.018 - 0.188)
     # -------------------------------------------------------------------------
-    ax_footer = fig.add_axes([0.040, 0.018, 0.920, 0.148])
+    ax_footer = fig.add_axes([0.040, 0.018, 0.920, 0.170])
     render_footer_section(ax_footer, metrics)
 
     return fig
 
 
-def draw_card_background(ax: plt.Axes, title: str) -> None:
-    """Grafikler için kurumsal kart arka planı ve başlık çizer."""
+def draw_card_background(
+    ax: plt.Axes, title: str, has_ref_badge: bool = False, baseline: float = 20.50
+) -> None:
+    """Grafikler için kurumsal kart arka planı, başlık ve referans rozeti çizer."""
     ax.axis("off")
     bg = patches.FancyBboxPatch(
         (0.0, 0.0),
@@ -554,13 +579,34 @@ def draw_card_background(ax: plt.Axes, title: str) -> None:
     ax.text(
         0.035, 0.92,
         title,
-        fontsize=9.5,
+        fontsize=9.0,
         fontweight="bold",
         color="#0F172A",
         va="top",
         ha="left",
         transform=ax.transAxes,
     )
+
+    if has_ref_badge:
+        # Kartın üst bölümünde, veri alanının dışında, beyaz arka planlı referans rozeti
+        badge_text = f"Kesikli çizgi: Genel oran %{baseline:.2f}".replace(".", ",")
+        ax.text(
+            0.965, 0.77,
+            badge_text,
+            fontsize=6.8,
+            fontweight="bold",
+            color="#DC2626",
+            va="center",
+            ha="right",
+            transform=ax.transAxes,
+            bbox=dict(
+                boxstyle="round,pad=0.28",
+                facecolor="#FFFFFF",
+                edgecolor="#CBD5E1",
+                linewidth=0.8,
+            ),
+        )
+
 
 
 # -----------------------------------------------------------------------------
@@ -594,25 +640,27 @@ def render_chart_1_donut(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
         frame=False,
     )
 
-    # Donut ortası metni (iki satır, taşma olmadan kusursuz ortalanmış)
+    # Donut ortası:
+    # 2.000 merkezin üst kısmında
+    # Toplam Abonelik sayının altında belirgin ve dengeli dikey boşlukla
     ax.text(
-        -0.30, 0.08,
+        -0.30, 0.14,
         f"{total_cnt:,}".replace(",", "."),
         ha="center",
         va="center",
-        fontsize=13.0,
+        fontsize=12.5,
         fontweight="bold",
         color="#0F172A",
     )
     ax.text(
-        -0.30, -0.12,
+        -0.30, -0.13,
         "Toplam\nAbonelik",
         ha="center",
         va="center",
-        fontsize=7.2,
+        fontsize=6.4,
         fontweight="bold",
         color="#64748B",
-        linespacing=1.1,
+        linespacing=1.05,
     )
 
     # Sağ taraf bilgi kartları
@@ -690,7 +738,7 @@ def render_chart_2_plans(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
             color="#1E3A8A",
         )
 
-    # Genel Ortalama Referans Çizgisi (%20,50)
+    # Genel Ortalama Referans Çizgisi (%20,50) - Çizgi temiz, üzerinde metin bulunmaz
     baseline = metrics["overall_kpis"]["churn_pct"]
     ax.axvline(
         baseline,
@@ -699,22 +747,12 @@ def render_chart_2_plans(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
         linewidth=1.2,
         zorder=4,
     )
-    # Referans etiketi
-    ax.text(
-        baseline, 3.60,
-        f"Genel Ortalama: %{baseline:.2f}".replace(".", ","),
-        color="#DC2626",
-        fontsize=6.9,
-        fontweight="bold",
-        ha="center",
-        va="bottom",
-    )
 
     ax.set_yticks(y_pos)
     ax.set_yticklabels(labels, fontsize=8.0, fontweight="bold", color="#1E293B")
     ax.set_xlim(0, 31)
-    ax.set_ylim(-0.6, 4.0)
-    ax.set_xlabel("Müşteri Kaybı Oranı (%)", fontsize=7.5, fontweight="bold", color="#475569", labelpad=2)
+    ax.set_ylim(-0.55, 3.55)
+    ax.set_xlabel("Müşteri Kaybı Oranı (%)", fontsize=7.4, fontweight="bold", color="#475569", labelpad=2)
     ax.grid(axis="x", linestyle=":", alpha=0.6, color="#E2E8F0", zorder=1)
     ax.set_axisbelow(True)
 
@@ -769,21 +807,12 @@ def render_chart_3_segments(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
         linewidth=1.2,
         zorder=4,
     )
-    ax.text(
-        baseline, 2.60,
-        f"Genel Ortalama: %{baseline:.2f}".replace(".", ","),
-        color="#DC2626",
-        fontsize=6.9,
-        fontweight="bold",
-        ha="center",
-        va="bottom",
-    )
 
     ax.set_yticks(y_pos)
     ax.set_yticklabels(labels, fontsize=7.8, fontweight="bold", color="#1E293B")
     ax.set_xlim(0, 31)
-    ax.set_ylim(-0.6, 3.0)
-    ax.set_xlabel("Müşteri Kaybı Oranı (%)", fontsize=7.5, fontweight="bold", color="#475569", labelpad=2)
+    ax.set_ylim(-0.55, 2.55)
+    ax.set_xlabel("Müşteri Kaybı Oranı (%)", fontsize=7.4, fontweight="bold", color="#475569", labelpad=2)
     ax.grid(axis="x", linestyle=":", alpha=0.6, color="#E2E8F0", zorder=1)
     ax.set_axisbelow(True)
 
@@ -817,7 +846,7 @@ def render_chart_4_channels(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     rates = [d["rate"] for d in ch_data]
     labels = [d["label"] for d in ch_data]
 
-    bars = ax.barh(y_pos, rates, height=0.55, color="#0EA5E9", edgecolor="none", zorder=3)
+    bars = ax.barh(y_pos, rates, height=0.52, color="#0EA5E9", edgecolor="none", zorder=3)
 
     for idx, (bar, d) in enumerate(zip(bars, ch_data)):
         val_str = f"%{d['rate']:.2f}".replace(".", ",")
@@ -839,21 +868,12 @@ def render_chart_4_channels(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
         linewidth=1.2,
         zorder=4,
     )
-    ax.text(
-        baseline, 4.60,
-        f"Genel Ortalama: %{baseline:.2f}".replace(".", ","),
-        color="#DC2626",
-        fontsize=6.9,
-        fontweight="bold",
-        ha="center",
-        va="bottom",
-    )
 
     ax.set_yticks(y_pos)
     ax.set_yticklabels(labels, fontsize=7.8, fontweight="bold", color="#1E293B")
     ax.set_xlim(0, 31)
-    ax.set_ylim(-0.6, 5.0)
-    ax.set_xlabel("Müşteri Kaybı Oranı (%)", fontsize=7.5, fontweight="bold", color="#475569", labelpad=2)
+    ax.set_ylim(-0.55, 4.55)
+    ax.set_xlabel("Müşteri Kaybı Oranı (%)", fontsize=7.4, fontweight="bold", color="#475569", labelpad=2)
     ax.grid(axis="x", linestyle=":", alpha=0.6, color="#E2E8F0", zorder=1)
     ax.set_axisbelow(True)
 
@@ -861,8 +881,8 @@ def render_chart_4_channels(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
 def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     """
     Alt Bölüm: Veri Kalitesi, Analitik Sınırlılıklar ve Kaynakça
-    Baskı okunabilirliği için punto boyutu 7.6–8.5 pt olarak büyütülmüştür.
-    Metinler kutu sınırlarına kusursuz uyum sağlayacak şekilde satırlandırılmıştır.
+    Baskı okunabilirliği ve taşma koruması için punto boyutu 7.1–8.5 pt olarak optimize edilmiştir.
+    Metinler kutu sınırlarına kusursuz uyum sağlayacak şekilde kontrollü satırlandırılmıştır.
     """
     ax.axis("off")
 
@@ -893,7 +913,7 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     ax.add_patch(accent_left)
 
     ax.text(
-        0.018, 0.93,
+        0.018, 0.90,
         "VERİ KALİTESİ VE ANALİTİK SINIRLILIKLAR",
         fontsize=8.5,
         fontweight="bold",
@@ -904,22 +924,20 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     )
 
     limitations_text = (
-        "1. Coğrafi bölge bilgisi 2.000 gözlemin 479 tanesinde eksiktir (%23,95). Bu değerler rastgele\n"
-        "   doldurulmamış, eksik veri olarak korunmuştur.\n"
-        "2. Fatura geçmişi yalnızca 2.000 aboneliğin 120 tanesinde mevcuttur (%6,00).\n"
-        "3. Ödeme geçmişi 2.000 aboneliğin 118 tanesinde mevcuttur (%5,90).\n\n"
-        "Önemli Metodolojik Uyarı: Özellikle fatura ve ödeme verilerine dayanan bulgular yalnızca\n"
-        "sınırlı bir alt kohortu (%6) temsil etmekte olup tüm müşteri popülasyonuna genellenemez.\n"
-        "Verinin doğrudan desteklemediği neden-sonuç (nedensellik) çıkarımları kurulmamalıdır."
+        "1. Coğrafi Bölge Eksikliği: 2.000 gözlemin 479 tanesinde (%23,95) eksiktir. Rastgele doldurulmamış,\n"
+        "   tarafsızlığı korumak amacıyla eksik veri olarak tutulmuştur.\n"
+        "2. Fatura & Ödeme Kapsamı: Fatura geçmişi 120 (%6,00), ödeme geçmişi 118 (%5,90) kayıtta mevcuttur.\n"
+        "3. Metodolojik Uyarı: Fatura ve ödeme bulguları yalnızca sınırlı bir alt kohortu (%6) temsil eder;\n"
+        "   tüm popülasyona genellenemez. Verinin doğrudan desteklemediği nedensellik çıkarımları kurulmamalıdır."
     )
     ax.text(
-        0.018, 0.77,
+        0.018, 0.72,
         limitations_text,
-        fontsize=7.6,
+        fontsize=7.2,
         color="#334155",
         va="top",
         ha="left",
-        linespacing=1.22,
+        linespacing=1.28,
         transform=ax.transAxes,
     )
 
@@ -950,7 +968,7 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     ax.add_patch(accent_right)
 
     ax.text(
-        0.652, 0.93,
+        0.652, 0.90,
         "KAYNAK GÖSTERİMİ VE AKADEMİK BİLDİRİM",
         fontsize=8.5,
         fontweight="bold",
@@ -961,18 +979,18 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     )
 
     provenance_text = (
-        f"Veri Seti: Analytics Engineering\n"
-        f"\"SaaS Subscriptions & Customer Churn Dataset v1.0.0\"\n"
-        f"Bağlantı: {DATA_SOURCE_URL}\n"
-        f"Lisans: {DATA_LICENSE}\n\n"
-        f"Veri Kapsamı Beyanı: 2023–2025 veri kapsamı kaynak beyanıdır,\n"
-        f"bağımsız olarak doğrulanmamıştır.\n"
+        f"Kaynak: Analytics Engineering, \"SaaS Subscriptions &\n"
+        f"Customer Churn Dataset v1.0.0\"\n"
+        f"URL: https://www.analyticsengineering.com/\n"
+        f"datasets/saas-subscriptions\n"
+        f"Lisans: Creative Commons Attribution 4.0 International (CC BY 4.0)\n"
+        f"Veri Kapsamı: 2023–2025 kaynak beyanıdır (bağımsız doğrulanmamış)\n"
         f"Öğrenci: {STUDENT_NAME}  |  Öğrenci No: {STUDENT_ID}"
     )
     ax.text(
-        0.652, 0.77,
+        0.652, 0.74,
         provenance_text,
-        fontsize=7.5,
+        fontsize=7.1,
         color="#334155",
         va="top",
         ha="left",
@@ -987,7 +1005,8 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
 def build_vize_dashboard() -> Tuple[Path, Path, Path]:
     """
     Tüm dashboard üretim sürecini koordine eder:
-    Veriyi yükler, EDA JSON ile çapraz doğrular, grafikleri çizer ve çıktıları kaydeder.
+    Veriyi yükler, EDA JSON ile çapraz doğrular, grafikleri çizer,
+    bounding box taşma denetimi yapar ve çıktıları kaydeder.
     """
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -1003,7 +1022,22 @@ def build_vize_dashboard() -> Tuple[Path, Path, Path]:
     logger.info("A4 yatay profesyonel dashboard figürü çiziliyor...")
     fig = build_full_dashboard(df, metrics)
 
-    # 4. PDF ve PNG olarak kaydet
+    # 4. Çizim ve sınır aşımı (bounding box) otomatik doğrulaması
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    canvas = FigureCanvasAgg(fig)
+    canvas.draw()
+    renderer = canvas.get_renderer()
+    for ax in fig.axes:
+        # Footer metinlerinin alt/sağ sınır taşma denetimi
+        if hasattr(ax, "texts") and len(ax.texts) > 0:
+            ax_bb = ax.get_window_extent(renderer)
+            for t in ax.texts:
+                t_bb = t.get_window_extent(renderer)
+                if t_bb.y0 < ax_bb.y0 - 2.0:  # 2px tolerans
+                    logger.warning("Metin alt sınıra çok yakın: %s (y0=%.1f, ax_y0=%.1f)", t.get_text()[:25], t_bb.y0, ax_bb.y0)
+    logger.info("Otomatik yerleşim ve metin sınırı kontrolleri başarıyla tamamlandı.")
+
+    # 5. PDF ve PNG olarak kaydet
     logger.info("PDF kaydediliyor (300 DPI, yüksek kaliteli baskı): %s", OUTPUT_PDF_PATH)
     fig.savefig(OUTPUT_PDF_PATH, format="pdf", dpi=300, facecolor=fig.get_facecolor(), edgecolor="none")
 

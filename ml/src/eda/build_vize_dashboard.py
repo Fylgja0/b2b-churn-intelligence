@@ -34,7 +34,7 @@ import matplotlib.patches as patches
 from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
-from scipy.stats import chi2_contingency
+from scipy.stats import chi2_contingency, fisher_exact
 
 # -----------------------------------------------------------------------------
 # YAPILANDIRMA VE SABİTLER
@@ -152,7 +152,7 @@ def compute_kaplan_meier(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, Dict
     s_arr = np.array(km_survival, dtype=float)
 
     milestones: Dict[str, float] = {}
-    for day in [180, 365, 540, 720]:
+    for day in [90, 180, 365, 540, 720]:
         idx = int(np.searchsorted(t_arr, day, side="right") - 1)
         idx = max(0, min(idx, len(s_arr) - 1))
         milestones[f"day_{day}_pct"] = round(float(s_arr[idx]), 2)
@@ -252,12 +252,14 @@ def load_and_validate_data(
         p_mrr_share = (p_mrr_tot / total_mrr) * 100.0
         p_ch_mrr_share = (p_mrr_ch / churned_mrr) * 100.0
         p_within_mrr_churn = (p_mrr_ch / p_mrr_tot) * 100.0
+        p_sub_share = (p_tot / total_records) * 100.0
 
         tr_key = PLAN_TR_MAP[p_name]
         plan_analysis[tr_key] = {
             "raw_key": p_name,
             "total": p_tot,
             "churned": p_ch,
+            "subscription_share_pct": round(p_sub_share, 2),
             "churn_rate_pct": round(p_rate, 2),
             "total_mrr": round(p_mrr_tot, 2),
             "churned_mrr": round(p_mrr_ch, 2),
@@ -309,7 +311,7 @@ def load_and_validate_data(
         if not math.isclose(calc["churn_rate"], exp_eda["churn_rate"], abs_tol=FLOAT_ABS_TOL):
             raise ValueError(f"Kanal '{c_name}' oran uyuşmazlığı!")
 
-    # 5. ADIM: Ki-Kare Bağımsızlık Testleri (Plan, Segment, Kanal vs Churn)
+    # 5. ADIM: Ki-Kare Bağımsızlık Testleri ve Enterprise vs Diğer Planlar Fisher Kesin Testi
     chi_square_tests: Dict[str, Any] = {}
     for col_key in ["plan_name", "segment", "acquisition_channel"]:
         ct = pd.crosstab(df[col_key], df["churn"])
@@ -321,6 +323,18 @@ def load_and_validate_data(
             "significant_at_0_05": bool(p_val < 0.05),
         }
 
+    ent_mask = df["plan_name"] == "Enterprise"
+    ent_ch = int((ent_mask & (df["churn"] == 1)).sum())
+    ent_act = int((ent_mask & (df["churn"] == 0)).sum())
+    oth_ch = int((~ent_mask & (df["churn"] == 1)).sum())
+    oth_act = int((~ent_mask & (df["churn"] == 0)).sum())
+    fisher_or, fisher_p = fisher_exact([[ent_ch, ent_act], [oth_ch, oth_act]])
+    chi_square_tests["enterprise_vs_others_fisher"] = {
+        "odds_ratio": round(float(fisher_or), 4),
+        "p_value": round(float(fisher_p), 4),
+        "significant_at_0_05": bool(fisher_p < 0.05),
+    }
+
     # 6. ADIM: Veri Kalitesi ve Sınırlılık Metrikleri
     missing_region_count = int(df["region"].isna().sum())
     missing_region_pct = (missing_region_count / total_records) * 100.0
@@ -328,6 +342,11 @@ def load_and_validate_data(
     billing_data_pct = (billing_data_count / total_records) * 100.0
     payment_data_count = int(df["has_payment_data"].sum())
     payment_data_pct = (payment_data_count / total_records) * 100.0
+
+    events_up_to_90d = int(((df["tenure_days"] <= 90) & (df["churn"] == 1)).sum())
+    d0_to_180_pp = round(100.0 - km_milestones["day_180_pct"], 2)
+    d180_to_365_pp = round(km_milestones["day_180_pct"] - km_milestones["day_365_pct"], 2)
+    d365_to_540_pp = round(km_milestones["day_365_pct"] - km_milestones["day_540_pct"], 2)
 
     logger.info("Tüm dinamik hesaplamalar, MRR payları, KM sağkalım ve Ki-Kare kontrolleri başarıyla geçildi.")
 
@@ -362,6 +381,12 @@ def load_and_validate_data(
         },
         "kaplan_meier": {
             "milestones": km_milestones,
+            "events_up_to_90d": events_up_to_90d,
+            "six_month_drops_pp": {
+                "d0_to_180_pp": d0_to_180_pp,
+                "d180_to_365_pp": d180_to_365_pp,
+                "d365_to_540_pp": d365_to_540_pp,
+            },
             "curve_days": [float(x) for x in km_t if x <= 720],
             "curve_survival_pct": [round(float(km_s[i]), 4) for i, x in enumerate(km_t) if x <= 720],
         },

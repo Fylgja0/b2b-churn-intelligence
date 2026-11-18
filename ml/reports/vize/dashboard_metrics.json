@@ -29,10 +29,17 @@
   },
   "kaplan_meier": {
     "milestones": {
+      "day_90_pct": 99.95,
       "day_180_pct": 95.24,
       "day_365_pct": 87.12,
       "day_540_pct": 78.04,
       "day_720_pct": 69.41
+    },
+    "events_up_to_90d": 1,
+    "six_month_drops_pp": {
+      "d0_to_180_pp": 4.76,
+      "d180_to_365_pp": 8.12,
+      "d365_to_540_pp": 9.08
     },
     "curve_days": [
       0.0,
@@ -1240,6 +1247,7 @@
       "raw_key": "Starter",
       "total": 955,
       "churned": 194,
+      "subscription_share_pct": 47.75,
       "churn_rate_pct": 20.31,
       "total_mrr": 48305.0,
       "churned_mrr": 9896.0,
@@ -1251,6 +1259,7 @@
       "raw_key": "Growth",
       "total": 669,
       "churned": 138,
+      "subscription_share_pct": 33.45,
       "churn_rate_pct": 20.63,
       "total_mrr": 138883.0,
       "churned_mrr": 28502.0,
@@ -1262,6 +1271,7 @@
       "raw_key": "Scale",
       "total": 272,
       "churned": 52,
+      "subscription_share_pct": 13.6,
       "churn_rate_pct": 19.12,
       "total_mrr": 227204.0,
       "churned_mrr": 43366.0,
@@ -1273,6 +1283,7 @@
       "raw_key": "Enterprise",
       "total": 104,
       "churned": 26,
+      "subscription_share_pct": 5.2,
       "churn_rate_pct": 25.0,
       "total_mrr": 260360.0,
       "churned_mrr": 64974.0,
@@ -1350,6 +1361,11 @@
       "chi2_statistic": 4.61,
       "p_value": 0.3297,
       "degrees_of_freedom": 4,
+      "significant_at_0_05": false
+    },
+    "enterprise_vs_others_fisher": {
+      "odds_ratio": 1.3125,
+      "p_value": 0.2611,
       "significant_at_0_05": false
     }
   },

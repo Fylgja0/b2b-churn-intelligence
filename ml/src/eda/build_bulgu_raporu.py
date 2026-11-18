@@ -1,0 +1,550 @@
+"""
+B2B SaaS Churn Intelligence - Vize Sınavı Tek Sayfalık Bulgu Raporu Üreticisi
+----------------------------------------------------------------------------
+Bu modül, ml/reports/vize/dashboard_metrics.json dosyasındaki doğrulanmış
+metrikleri okuyarak (hiçbir sayıyı elle sabitlemeden) A4 dikey formatında,
+10–10,5 pt yazı boyutunda, tek sayfalık 'bulgu_raporu.docx' ve 'bulgu_raporu.pdf'
+dosyalarını üretir ve otomatik tutarlılık denetimi gerçekleştirir.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import zipfile
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+from xml.sax.saxutils import escape
+
+# Yollar
+SCRIPT_DIR = Path(__file__).resolve().parent
+SRC_DIR = SCRIPT_DIR.parent
+ML_DIR = SRC_DIR.parent
+REPO_ROOT = ML_DIR.parent
+
+VIZE_DIR = ML_DIR / "reports" / "vize"
+METRICS_JSON_PATH = VIZE_DIR / "dashboard_metrics.json"
+OUTPUT_DOCX_PATH = VIZE_DIR / "bulgu_raporu.docx"
+OUTPUT_PDF_PATH = VIZE_DIR / "bulgu_raporu.pdf"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("bulgu_raporu")
+
+
+def fmt_int(val: int | float) -> str:
+    """Tam sayıları Türkçe binlik ayırıcı (.) ile biçimlendirir."""
+    return f"{int(round(val)):,}".replace(",", ".")
+
+
+def fmt_pct(val: float, decimals: int = 2) -> str:
+    """Yüzde değerlerini Türkçe ondalık virgülü (,) ile biçimlendirir."""
+    return f"{val:.{decimals}f}".replace(".", ",")
+
+
+def build_report_content(m: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Tüm sayıları doğrudan dashboard_metrics.json sözlüğünden okuyarak
+    rapor başlıklarını ve paragraflarını oluşturur.
+    """
+    st = m["student_info"]
+    prov = m["data_provenance"]
+    kpis = m["overall_kpis"]
+    km = m["kaplan_meier"]
+    ms = km["milestones"]
+    drops = km["six_month_drops_pp"]
+    plans = m["plan_analysis"]
+    mrr_plans = m["mrr_by_plan"]
+    segs = m["segment_analysis"]
+    chans = m["channel_analysis"]
+    chi2 = m["chi_square_tests"]
+    dq = m["data_quality_limitations"]
+
+    # Dinamik biçimlendirilmiş metrikler
+    tot_sub = fmt_int(kpis["total_subscriptions"])
+    act_sub = fmt_int(kpis["active_subscriptions"])
+    ch_sub = fmt_int(kpis["churned_subscriptions"])
+    act_pct = fmt_pct(kpis["active_pct"], 2)
+    ch_pct_1 = fmt_pct(kpis["churn_pct"], 1)
+    ch_pct_2 = fmt_pct(kpis["churn_pct"], 2)
+
+    tot_mrr = fmt_int(kpis["total_mrr"])
+    mrr_ch_pct = fmt_pct(kpis["mrr_churn_pct"], 2)
+
+    km_180 = fmt_pct(ms["day_180_pct"], 2)
+    km_365 = fmt_pct(ms["day_365_pct"], 2)
+    km_540 = fmt_pct(ms["day_540_pct"], 2)
+
+    dr_1_exact = fmt_pct(drops["d0_to_180_pp"], 2)
+    dr_2_exact = fmt_pct(drops["d180_to_365_pp"], 2)
+    dr_3_exact = fmt_pct(drops["d365_to_540_pp"], 2)
+    dr_1_approx = fmt_pct(drops["d0_to_180_pp"], 1)
+    dr_2_approx = fmt_pct(drops["d180_to_365_pp"], 1)
+    dr_3_approx = fmt_pct(drops["d365_to_540_pp"], 1)
+
+    ent_plan = plans["Enterprise (Kurumsal Plan)"]
+    ent_mrr = mrr_plans["Enterprise (Kurumsal Plan)"]
+    ent_cnt = fmt_int(ent_plan["total"])
+    ent_sub_share_1 = fmt_pct(ent_plan["subscription_share_pct"], 1)
+    ent_mrr_share_1 = fmt_pct(ent_mrr["total_mrr_share_pct"], 1)
+    ent_lost_share_1 = fmt_pct(ent_mrr["churned_mrr_share_pct"], 1)
+    ent_ch_rate_1 = fmt_pct(ent_plan["churn_rate_pct"], 1)
+    ent_ch_rate_2 = fmt_pct(ent_plan["churn_rate_pct"], 2)
+
+    scale_rate = fmt_pct(plans["Ölçek"]["churn_rate_pct"], 2)
+    growth_rate = fmt_pct(plans["Büyüme"]["churn_rate_pct"], 2)
+    starter_rate = fmt_pct(plans["Başlangıç"]["churn_rate_pct"], 2)
+
+    p_plan = fmt_pct(chi2["plan_name"]["p_value"], 2)
+    p_seg = fmt_pct(chi2["segment"]["p_value"], 2)
+    p_ch = fmt_pct(chi2["acquisition_channel"]["p_value"], 2)
+    p_fisher = fmt_pct(chi2["enterprise_vs_others_fisher"]["p_value"], 2)
+
+    mid_seg_rate = fmt_pct(segs["Orta Ölçekli Pazar"]["churn_rate_pct"], 2)
+    smb_seg_rate = fmt_pct(segs["KOBİ"]["churn_rate_pct"], 2)
+    ent_seg_rate = fmt_pct(segs["Kurumsal Müşteri"]["churn_rate_pct"], 2)
+
+    part_ch_rate = fmt_pct(chans["İş Ortağı"]["churn_rate_pct"], 2)
+    ref_ch_rate = fmt_pct(chans["Tavsiye"]["churn_rate_pct"], 2)
+    org_ch_rate = fmt_pct(chans["Organik"]["churn_rate_pct"], 2)
+    out_ch_rate = fmt_pct(chans["Giden Pazarlama"]["churn_rate_pct"], 2)
+    paid_ch_rate = fmt_pct(chans["Ücretli Arama"]["churn_rate_pct"], 2)
+
+    reg_miss_cnt = fmt_int(dq["missing_region_count"])
+    reg_miss_pct = fmt_pct(dq["missing_region_pct"], 2)
+    bil_cnt = fmt_int(dq["billing_data_coverage_count"])
+    bil_pct = fmt_pct(dq["billing_data_coverage_pct"], 2)
+    pay_cnt = fmt_int(dq["payment_data_coverage_count"])
+    pay_pct = fmt_pct(dq["payment_data_coverage_pct"], 2)
+
+    content = {
+        "header_title": "B2B Müşteri Kaybı ve Elde Tutma Analizi",
+        "header_subtitle": f"{st['project_title']} — Vize Bulgu Raporu",
+        "header_meta": f"Öğrenci: {st['name']}  |  Öğrenci No: {st['student_id']}  |  {st['course']}",
+        "sections": [
+            {
+                "heading": "1. Amaç ve Veri",
+                "paragraphs": [
+                    (
+                        f"Bu çalışmanın temel araştırma sorusu şudur: B2B SaaS portföyünde hangi abonelikler, "
+                        f"ne zaman ve ne kadar gelir (MRR) etkisiyle kaybedilmektedir? Analizde {prov['source']} "
+                        f"({prov['license']}) kaynağına ait sentetik (simüle) veri seti kullanılmıştır. Veri seti "
+                        f"01.01.2023 – 31.12.2025 (2023–2025) dönemini kapsamakta olup toplam {tot_sub} abonelik "
+                        f"kaydından ({act_sub} aktif, {ch_sub} iptal edilmiş) oluşmaktadır ve temel gözlem birimi "
+                        f"aboneliktir."
+                    )
+                ],
+                "bullets": [],
+            },
+            {
+                "heading": "2. Grafiklerin Amacı ve Seçim Gerekçesi",
+                "paragraphs": [],
+                "bullets": [
+                    (
+                        "\"Abonelik Süresine Göre Elde Tutma Eğrisi\": Aboneliklerin zaman içinde (0–720 gün) hangi "
+                        "hızla kaybedildiği ve terk riskinin hangi dönemlerde yoğunlaştığı sorusuna yanıt verir. Aktif "
+                        "aboneliklerin gözlem süresi devam ettiği (sağdan sansürlü veri) için zaman içindeki sağkalım "
+                        "olasılığını yansız tahmin eden Kaplan-Meier çizgi/basamak grafiği seçilmiştir."
+                    ),
+                    (
+                        f"\"Plan Bazında MRR ve Kayıp MRR Payı\": Her abonelik planının toplam aylık gelir (${tot_mrr}) "
+                        f"içindeki payı ile kaybedilen gelir (%{mrr_ch_pct}) içindeki payının orantılı olup olmadığını "
+                        "sorgular. İki farklı oransal ölçüyü (Toplam MRR Payı % ve Kaybedilen MRR Payı %) dört plan "
+                        "kategorisi arasında doğrudan karşılaştırmak amacıyla iki gruplu çubuk grafik kullanılmıştır."
+                    ),
+                    (
+                        f"\"Hangi Planda Kayıp Oranı Daha Yüksek?\": Abonelik planları arasında terk oranlarının anlamlı "
+                        f"biçimde farklılaşıp farklılaşmadığı sorusunu yanıtlar. Kategori oranlarını genel portföy "
+                        f"ortalaması (%{ch_pct_2}) ile kıyaslamak ve uzun kategori etiketlerini kesintisiz okutmak "
+                        "için yatay çubuk grafik ve dikey kesikli referans çizgisi tercih edilmiştir."
+                    ),
+                    (
+                        f"\"Segmentlere Göre Kayıp Farklılaşıyor mu?\": Müşteri ölçeği segmentlerinde (KOBİ, Kurumsal "
+                        f"Müşteri, Orta Ölçekli Pazar) kayıp oranının değişip değişmediğini inceler. Kategori oranlarını "
+                        f"ortak tabanda ve %{ch_pct_2} genel referans çizgisine göre karşılaştırmak için yatay çubuk "
+                        "grafik kullanılmıştır."
+                    ),
+                    (
+                        f"\"Edinme Kanalı Kaybı Etkiliyor mu?\": Beş müşteri kazanım kanalında terk oranlarının "
+                        f"farklılaşıp farklılaşmadığı sorusuna cevap verir. Çoklu kategori oranlarını büyüklük "
+                        f"sırasıyla ve %{ch_pct_2} genel referans eşiğiyle karşılaştırmak amacıyla yatay çubuk grafik "
+                        "seçilmiştir."
+                    ),
+                ],
+            },
+            {
+                "heading": "3. Temel Bulgular",
+                "paragraphs": [],
+                "bullets": [
+                    (
+                        f"Genel Abonelik ve Gelir Kaybı: Portföydeki {tot_sub} aboneliğin {ch_sub} adedi iptal edilmiş "
+                        f"olup genel müşteri kaybı (churn) oranı %{ch_pct_1} (%{ch_pct_2}; {ch_sub}/{tot_sub}) "
+                        f"düzeyindedir (aktif: {act_sub} / %{act_pct}). Buna karşın toplam ${tot_mrr} MRR içinde "
+                        f"toplam MRR kaybı oranı %{mrr_ch_pct} olup gelir kaybı, abonelik kaybı oranının üzerindedir."
+                    ),
+                    (
+                        f"Zamana Bağlı Elde Tutma Eğrisi: Kaplan-Meier elde tutma oranı 180. günde %{km_180}, 365. günde "
+                        f"(12. ay) %{km_365} ve 540. günde (18. ay) %{km_540} düzeyindedir. İlk 90 günde neredeyse hiç "
+                        f"iptal görülmezken, takip eden her 6 aylık dilimde sağkalım kaybı hızlanarak artmakta "
+                        f"(yaklaşık {dr_1_approx} [{dr_1_exact}] → {dr_2_approx} [{dr_2_exact}] → {dr_3_approx} "
+                        f"[{dr_3_exact}] yüzde puan) ve 18. aya kadar eğride bir plato görünmemektedir."
+                    ),
+                    (
+                        f"Enterprise Planının Gelir Etkisi: Enterprise (Kurumsal Plan) tüm aboneliklerin yalnızca "
+                        f"%{ent_sub_share_1}'sini ({ent_cnt}/{tot_sub}) oluşturmasına karşın toplam MRR'nin "
+                        f"%{ent_mrr_share_1}'sını ve kaybedilen toplam MRR'nin %{ent_lost_share_1}'ünü "
+                        f"oluşturmaktadır. Bu planda churn oranı %{ent_ch_rate_1} (%{ent_ch_rate_2}) olmakla birlikte "
+                        f"diğer planlardan istatistiksel olarak anlamlı biçimde yüksek değildir (Fisher p≈{p_fisher}); "
+                        "gelir etkisi büyük ölçüde birim fiyattan gelmektedir."
+                    ),
+                    (
+                        f"Kategorik Kırılımlarda İstatistiksel Anlamsızlık: Plan (Enterprise %{ent_ch_rate_2}, Ölçek "
+                        f"%{scale_rate}, Büyüme %{growth_rate}, Başlangıç %{starter_rate}; Ki-kare p={p_plan}), segment "
+                        f"(KOBİ %{smb_seg_rate}, Kurumsal Müşteri %{ent_seg_rate}, Orta Ölçekli Pazar %{mid_seg_rate}; "
+                        f"Ki-kare p={p_seg}) ve edinme kanalı (Organik %{org_ch_rate}, Giden Pazarlama %{out_ch_rate}, "
+                        f"Ücretli Arama %{paid_ch_rate}, Tavsiye %{ref_ch_rate}, İş Ortağı %{part_ch_rate}; Ki-kare "
+                        f"p={p_ch}) farkları küçüktür ve istatistiksel olarak anlamlı değildir (p > 0,05). En düşük "
+                        f"oranlar Orta Ölçekli Pazar (%{mid_seg_rate}), İş Ortağı (%{part_ch_rate}) ve Tavsiye "
+                        f"(%{ref_ch_rate}) gruplarında olup yalnızca gözlemseldir."
+                    ),
+                ],
+            },
+            {
+                "heading": "4. Bulguların Yorumu",
+                "paragraphs": [
+                    (
+                        f"Analiz bulguları birlikte değerlendirildiğinde, müşteri kaybının belirli bir abonelik planı, "
+                        f"müşteri segmenti veya edinme kanalına özgü yapısal bir ayrışmadan (Ki-kare p = {p_plan} / "
+                        f"{p_seg} / {p_ch}) çok, zamana yayılan bir elde tutma sorunu ile ilişkili olduğu görülmektedir. "
+                        f"İlk 90 günde neredeyse hiç görülmeyen terk davranışının 6. aydan sonra hızlanması ({dr_1_approx} "
+                        f"→ {dr_2_approx} → {dr_3_approx} puan) ve 18. ayda dahi platoya ulaşmaması, abonelik yaşam "
+                        f"döngüsünün orta-ileri evrelerinde terk riskinin birikmesiyle birlikte görülmektedir. Benzer "
+                        f"biçimde Enterprise planının önceliği, daha yüksek bir terk eğiliminden (Fisher p≈{p_fisher}) "
+                        f"değil, portföy gelirinin %{ent_mrr_share_1}'sını ve kayıp gelirin %{ent_lost_share_1}'ünü "
+                        f"barındıran yüksek gelir ağırlığından kaynaklanmaktadır; bu bulgular nedensellik iddiası "
+                        "taşımamakta olup gözlemsel ilişkisellik çerçevesinde yorumlanmalıdır."
+                    ),
+                    (
+                        f"Sınırlılıklar: Çalışma; verinin sentetik (simüle) olması, fatura (%{bil_pct}; {bil_cnt} kayıt) "
+                        f"ve ödeme (%{pay_pct}; {pay_cnt} kayıt) verilerinin yalnızca ~%6'lık alt kohortta bulunması, "
+                        f"bölge bilgisinin %{reg_miss_pct} ({reg_miss_cnt} kayıt) oranında eksik olması ve anlamlılık "
+                        "testlerinin çoklu test düzeltmesiz keşifsel nitelik taşıması nedeniyle sınırlılık içerir."
+                    ),
+                    (
+                        f"Genel Sonuç: İncelenen SaaS portföyünde %{ch_pct_1} olan abonelik kaybı, yüksek bedelli "
+                        f"planların ağırlığı nedeniyle %{mrr_ch_pct} MRR kaybı ile birlikte görülmektedir. Kategorik "
+                        "gruplar arasında istatistiksel olarak anlamlı bir terk farkı bulunmadığından, müşteri tutundurma "
+                        "izlemlerinin 6. aydan sonra hızlanan zamansal kayba ve yüksek gelir payına sahip Enterprise ile "
+                        "Ölçek sözleşmelerine odaklanması daha uygun görünmektedir."
+                    ),
+                ],
+                "bullets": [],
+            },
+        ],
+    }
+    return content
+
+
+def write_docx_report(content: Dict[str, Any], docx_path: Path) -> None:
+    """
+    Standart OpenXML (WordprocessingML) yapısında tek sayfalık A4 dikey,
+    10–10,5 pt yazı boyutunda bulgu_raporu.docx dosyasını üretir.
+    """
+    # A4 portrait in twips: 11906 x 16838 (210mm x 297mm)
+    # Margins: top/bottom = 720 twips (0.5 in = 12.7 mm), left/right = 850 twips (15 mm)
+    # Font sizes in half-points: 10 pt = 20, 10.5 pt = 21, 11 pt = 22, 14 pt = 28
+
+    body_xml_parts: List[str] = []
+
+    # Üst Başlık Bloğu (Rapor Başlığı, Altbaşlık, Öğrenci ve Numara Bilgisi)
+    body_xml_parts.append(
+        f"""
+        <w:p>
+          <w:pPr>
+            <w:spacing w:before="0" w:after="40" w:line="240" w:lineRule="auto"/>
+          </w:pPr>
+          <w:r>
+            <w:rPr>
+              <w:rFonts w:ascii="Liberation Sans" w:hAnsi="Liberation Sans" w:cs="Liberation Sans"/>
+              <w:b/>
+              <w:color w:val="0F172A"/>
+              <w:sz w:val="28"/>
+              <w:szCs w:val="28"/>
+            </w:rPr>
+            <w:t>{escape(content['header_title'])}</w:t>
+          </w:r>
+        </w:p>
+        <w:p>
+          <w:pPr>
+            <w:spacing w:before="0" w:after="40" w:line="230" w:lineRule="auto"/>
+          </w:pPr>
+          <w:r>
+            <w:rPr>
+              <w:rFonts w:ascii="Liberation Sans" w:hAnsi="Liberation Sans" w:cs="Liberation Sans"/>
+              <w:b/>
+              <w:color w:val="1E3A8A"/>
+              <w:sz w:val="21"/>
+              <w:szCs w:val="21"/>
+            </w:rPr>
+            <w:t>{escape(content['header_subtitle'])}</w:t>
+          </w:r>
+        </w:p>
+        <w:p>
+          <w:pPr>
+            <w:pBdr>
+              <w:bottom w:val="single" w:sz="6" w:space="4" w:color="CBD5E1"/>
+            </w:pBdr>
+            <w:spacing w:before="0" w:after="110" w:line="220" w:lineRule="auto"/>
+          </w:pPr>
+          <w:r>
+            <w:rPr>
+              <w:rFonts w:ascii="Liberation Sans" w:hAnsi="Liberation Sans" w:cs="Liberation Sans"/>
+              <w:color w:val="334155"/>
+              <w:sz w:val="20"/>
+              <w:szCs w:val="20"/>
+            </w:rPr>
+            <w:t>{escape(content['header_meta'])}</w:t>
+          </w:r>
+        </w:p>
+        """
+    )
+
+    for sec in content["sections"]:
+        # Bölüm Başlığı (11 pt bold)
+        body_xml_parts.append(
+            f"""
+            <w:p>
+              <w:pPr>
+                <w:spacing w:before="90" w:after="45" w:line="230" w:lineRule="auto"/>
+              </w:pPr>
+              <w:r>
+                <w:rPr>
+                  <w:rFonts w:ascii="Liberation Sans" w:hAnsi="Liberation Sans" w:cs="Liberation Sans"/>
+                  <w:b/>
+                  <w:color w:val="1E3A8A"/>
+                  <w:sz w:val="22"/>
+                  <w:szCs w:val="22"/>
+                </w:rPr>
+                <w:t>{escape(sec['heading'])}</w:t>
+              </w:r>
+            </w:p>
+            """
+        )
+
+        # Paragraflar (10 pt = sz 20)
+        for p_text in sec["paragraphs"]:
+            body_xml_parts.append(
+                f"""
+                <w:p>
+                  <w:pPr>
+                    <w:jc w:val="both"/>
+                    <w:spacing w:before="0" w:after="65" w:line="228" w:lineRule="auto"/>
+                  </w:pPr>
+                  <w:r>
+                    <w:rPr>
+                      <w:rFonts w:ascii="Liberation Sans" w:hAnsi="Liberation Sans" w:cs="Liberation Sans"/>
+                      <w:color w:val="1E293B"/>
+                      <w:sz w:val="20"/>
+                      <w:szCs w:val="20"/>
+                    </w:rPr>
+                    <w:t>{escape(p_text)}</w:t>
+                  </w:r>
+                </w:p>
+                """
+            )
+
+        # Madde İşaretli Satırlar (10 pt = sz 20)
+        for b_text in sec["bullets"]:
+            body_xml_parts.append(
+                f"""
+                <w:p>
+                  <w:pPr>
+                    <w:ind w:left="220" w:hanging="160"/>
+                    <w:jc w:val="both"/>
+                    <w:spacing w:before="0" w:after="55" w:line="226" w:lineRule="auto"/>
+                  </w:pPr>
+                  <w:r>
+                    <w:rPr>
+                      <w:rFonts w:ascii="Liberation Sans" w:hAnsi="Liberation Sans" w:cs="Liberation Sans"/>
+                      <w:color w:val="1E293B"/>
+                      <w:sz w:val="20"/>
+                      <w:szCs w:val="20"/>
+                    </w:rPr>
+                    <w:t>• {escape(b_text)}</w:t>
+                  </w:r>
+                </w:p>
+                """
+            )
+
+    # Sayfa ayarları (A4 dikey)
+    body_xml_parts.append(
+        """
+        <w:sectPr>
+          <w:pgSz w:w="11906" w:h="16838"/>
+          <w:pgMar w:top="680" w:right="780" w:bottom="680" w:left="780" w:header="360" w:footer="360" w:gutter="0"/>
+        </w:sectPr>
+        """
+    )
+
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">\n'
+        "  <w:body>\n"
+        + "\n".join(body_xml_parts)
+        + "\n  </w:body>\n</w:document>\n"
+    )
+
+    content_types_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>
+"""
+
+    rels_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>
+"""
+
+    with zipfile.ZipFile(docx_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", content_types_xml)
+        zf.writestr("_rels/.rels", rels_xml)
+        zf.writestr("word/document.xml", document_xml)
+
+
+def convert_docx_to_pdf(docx_path: Path, output_dir: Path) -> Path:
+    """LibreOffice headless kullanarak .docx dosyasını doğrudan .pdf'e dönüştürür."""
+    lo_profile = Path(tempfile.gettempdir()) / "lo_vize_profile"
+    cmd = [
+        "libreoffice",
+        f"-env:UserInstallation=file://{lo_profile}",
+        "--headless",
+        "--convert-to",
+        "pdf",
+        "--outdir",
+        str(output_dir),
+        str(docx_path),
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if res.returncode != 0:
+        raise RuntimeError(f"LibreOffice PDF dönüştürme hatası: {res.stderr}")
+    pdf_path = output_dir / f"{docx_path.stem}.pdf"
+    if not pdf_path.exists():
+        raise FileNotFoundError(f"PDF çıktısı oluşturulamadı: {pdf_path}")
+    return pdf_path
+
+
+def verify_report_numbers_against_json(content: Dict[str, Any], m: Dict[str, Any]) -> None:
+    """
+    Rapordaki tüm metinleri birleştirir ve dashboard_metrics.json'daki
+    tüm zorunlu metriklerin raporda birebir yer aldığını otomatik doğrular.
+    """
+    full_text = " ".join(
+        [content["header_title"], content["header_subtitle"], content["header_meta"]]
+        + [
+            p
+            for sec in content["sections"]
+            for p in (sec["paragraphs"] + sec["bullets"])
+        ]
+    )
+
+    kpis = m["overall_kpis"]
+    km = m["kaplan_meier"]
+    ms = km["milestones"]
+    drops = km["six_month_drops_pp"]
+    plans = m["plan_analysis"]
+    mrr_plans = m["mrr_by_plan"]
+    segs = m["segment_analysis"]
+    chans = m["channel_analysis"]
+    chi2 = m["chi_square_tests"]
+    dq = m["data_quality_limitations"]
+
+    expected_tokens = [
+        m["student_info"]["name"],
+        m["student_info"]["student_id"],
+        "B2B Müşteri Kaybı ve Elde Tutma Analizi",
+        "SaaS Abonelik Müşteri Kaybı: Keşifsel Veri Analizi",
+        "Abonelik Süresine Göre Elde Tutma Eğrisi",
+        "Plan Bazında MRR ve Kayıp MRR Payı",
+        "Hangi Planda Kayıp Oranı Daha Yüksek?",
+        "Segmentlere Göre Kayıp Farklılaşıyor mu?",
+        "Edinme Kanalı Kaybı Etkiliyor mu?",
+        fmt_int(kpis["total_subscriptions"]),
+        fmt_int(kpis["active_subscriptions"]),
+        fmt_int(kpis["churned_subscriptions"]),
+        fmt_pct(kpis["churn_pct"], 1),
+        fmt_pct(kpis["mrr_churn_pct"], 2),
+        fmt_pct(ms["day_180_pct"], 2),
+        fmt_pct(ms["day_365_pct"], 2),
+        fmt_pct(ms["day_540_pct"], 2),
+        fmt_pct(drops["d0_to_180_pp"], 1),
+        fmt_pct(drops["d180_to_365_pp"], 1),
+        fmt_pct(drops["d365_to_540_pp"], 1),
+        fmt_pct(plans["Enterprise (Kurumsal Plan)"]["subscription_share_pct"], 1),
+        fmt_pct(mrr_plans["Enterprise (Kurumsal Plan)"]["total_mrr_share_pct"], 1),
+        fmt_pct(mrr_plans["Enterprise (Kurumsal Plan)"]["churned_mrr_share_pct"], 1),
+        fmt_pct(plans["Enterprise (Kurumsal Plan)"]["churn_rate_pct"], 1),
+        fmt_pct(chi2["enterprise_vs_others_fisher"]["p_value"], 2),
+        fmt_pct(chi2["plan_name"]["p_value"], 2),
+        fmt_pct(chi2["segment"]["p_value"], 2),
+        fmt_pct(chi2["acquisition_channel"]["p_value"], 2),
+        fmt_pct(segs["Orta Ölçekli Pazar"]["churn_rate_pct"], 2),
+        fmt_pct(chans["İş Ortağı"]["churn_rate_pct"], 2),
+        fmt_pct(chans["Tavsiye"]["churn_rate_pct"], 2),
+        fmt_pct(dq["missing_region_pct"], 2),
+    ]
+
+    for tok in expected_tokens:
+        if tok not in full_text:
+            raise ValueError(f"Otomatik doğrulama hatası: '{tok}' değeri veya başlığı raporda bulunamadı!")
+
+    logger.info("Otomatik metrik ve başlık doğrulaması başarılı (%d kontrol noktası eşleşti).", len(expected_tokens))
+
+
+def verify_pdf_single_page(pdf_path: Path) -> int:
+    """pdfinfo ile PDF'in tam olarak 1 sayfa olduğunu doğrular."""
+    res = subprocess.run(["pdfinfo", str(pdf_path)], capture_output=True, text=True, check=True)
+    match = re.search(r"^Pages:\s+(\d+)", res.stdout, flags=re.MULTILINE)
+    if not match:
+        raise RuntimeError("pdfinfo çıktısında sayfa sayısı okunamadı!")
+    pages = int(match.group(1))
+    if pages != 1:
+        raise ValueError(f"Sayfa sınırı hatası: bulgu_raporu.pdf 1 sayfa olmalı, bulunan: {pages} sayfa!")
+    return pages
+
+
+def build_bulgu_raporu() -> Tuple[Path, Path]:
+    if not METRICS_JSON_PATH.exists():
+        raise FileNotFoundError(f"Metrik JSON dosyası bulunamadı: {METRICS_JSON_PATH}")
+
+    with open(METRICS_JSON_PATH, "r", encoding="utf-8") as f:
+        metrics = json.load(f)
+
+    content = build_report_content(metrics)
+    verify_report_numbers_against_json(content, metrics)
+
+    logger.info("DOCX raporu oluşturuluyor: %s", OUTPUT_DOCX_PATH)
+    write_docx_report(content, OUTPUT_DOCX_PATH)
+
+    logger.info("PDF raporu oluşturuluyor: %s", OUTPUT_PDF_PATH)
+    convert_docx_to_pdf(OUTPUT_DOCX_PATH, VIZE_DIR)
+
+    pages = verify_pdf_single_page(OUTPUT_PDF_PATH)
+    logger.info("bulgu_raporu.pdf başarıyla doğrulandı (Sayfa sayısı: %d).", pages)
+
+    return OUTPUT_PDF_PATH, OUTPUT_DOCX_PATH
+
+
+if __name__ == "__main__":
+    build_bulgu_raporu()
+    print("✅ Tek sayfalık bulgu_raporu.pdf ve bulgu_raporu.docx başarıyla üretildi ve doğrulandı.")

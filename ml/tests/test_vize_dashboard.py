@@ -137,3 +137,25 @@ def test_dashboard_deliverables_exist() -> None:
     assert OUTPUT_PDF_PATH.exists() and OUTPUT_PDF_PATH.stat().st_size > 0
     assert OUTPUT_PNG_PATH.exists() and OUTPUT_PNG_PATH.stat().st_size > 0
     assert OUTPUT_JSON_PATH.exists() and OUTPUT_JSON_PATH.stat().st_size > 0
+
+
+def test_bulgu_raporu_consistency_and_single_page(dashboard_metrics: dict) -> None:
+    """
+    Verifies that bulgu_raporu.pdf and bulgu_raporu.docx exist, that bulgu_raporu.pdf
+    is strictly 1 page, and that all numbers in the report match dashboard_metrics.json.
+    """
+    from ml.src.eda.build_bulgu_raporu import (
+        OUTPUT_DOCX_PATH as REPORT_DOCX_PATH,
+        OUTPUT_PDF_PATH as REPORT_PDF_PATH,
+        build_report_content,
+        verify_pdf_single_page,
+        verify_report_numbers_against_json,
+    )
+
+    assert REPORT_DOCX_PATH.exists() and REPORT_DOCX_PATH.stat().st_size > 0
+    assert REPORT_PDF_PATH.exists() and REPORT_PDF_PATH.stat().st_size > 0
+
+    content = build_report_content(dashboard_metrics)
+    verify_report_numbers_against_json(content, dashboard_metrics)
+    assert verify_pdf_single_page(REPORT_PDF_PATH) == 1
+

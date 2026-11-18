@@ -7,7 +7,7 @@
     "project_title": "SaaS Abonelik Müşteri Kaybı: Keşifsel Veri Analizi"
   },
   "data_provenance": {
-    "source": "Analytics Engineering, 'SaaS Subscriptions & Customer Churn Dataset v1.0.0'",
+    "source": "Analytics Engineering — SaaS Subscriptions & Customer Churn Dataset v1.0.0",
     "url": "https://www.analyticsengineering.com/datasets/saas-subscriptions",
     "license": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
     "dataset_type": "Sentetik (simüle) veri seti",
@@ -34,6 +34,14 @@
       "day_365_pct": 87.12,
       "day_540_pct": 78.04,
       "day_720_pct": 69.41
+    },
+    "conditional_loss_probabilities": {
+      "q_0_to_180_pct": 4.76,
+      "q_180_to_365_pct": 8.52,
+      "q_365_to_540_pct": 10.42,
+      "q_0_to_180_exact": 0.0475965754956158,
+      "q_180_to_365_exact": 0.08523815942001978,
+      "q_365_to_540_exact": 0.10422212472145276
     },
     "events_up_to_90d": 1,
     "six_month_drops_pp": {

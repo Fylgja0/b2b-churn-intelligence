@@ -43,7 +43,7 @@ STUDENT_NAME = "Ahmetcan Bağlı"
 STUDENT_ID = "2516016010"
 COURSE_TITLE = "Uygulamalı Veri Analizi Dersi - Vize Çalışması"
 PROJECT_TITLE = "SaaS Abonelik Müşteri Kaybı: Keşifsel Veri Analizi"
-DATA_SOURCE_NAME = "Analytics Engineering, 'SaaS Subscriptions & Customer Churn Dataset v1.0.0'"
+DATA_SOURCE_NAME = "Analytics Engineering — SaaS Subscriptions & Customer Churn Dataset v1.0.0"
 DATA_SOURCE_URL = "https://www.analyticsengineering.com/datasets/saas-subscriptions"
 DATA_LICENSE = "Creative Commons Attribution 4.0 International (CC BY 4.0)"
 DECLARED_DATE_RANGE = "01.01.2023 – 31.12.2025"
@@ -126,10 +126,13 @@ plt.rcParams["axes.unicode_minus"] = False
 # -----------------------------------------------------------------------------
 # KAPLAN-MEIER SAĞKALIM (ELDE TUTMA) HESAPLAMA MOTORU
 # -----------------------------------------------------------------------------
-def compute_kaplan_meier(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, Dict[str, float]]:
+def compute_kaplan_meier(
+    df: pd.DataFrame,
+) -> Tuple[np.ndarray, np.ndarray, Dict[str, float], Dict[str, float]]:
     """
     tenure_days ve churn sütunlarını kullanarak Kaplan-Meier çarpım-limit (product-limit)
     elde tutma olasılığını hesaplar. Aktif abonelikler (churn == 0) sağdan sansürlüdür.
+    Tam hassasiyetli değerler üzerinden koşullu dönemsel kayıp olasılıklarını q(a,b) hesaplar.
     """
     valid = df[["tenure_days", "churn"]].dropna()
     unique_times = np.sort(valid["tenure_days"].unique())
@@ -151,13 +154,34 @@ def compute_kaplan_meier(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, Dict
     t_arr = np.array(km_times, dtype=float)
     s_arr = np.array(km_survival, dtype=float)
 
-    milestones: Dict[str, float] = {}
-    for day in [90, 180, 365, 540, 720]:
+    def get_s_exact(day: float) -> float:
         idx = int(np.searchsorted(t_arr, day, side="right") - 1)
         idx = max(0, min(idx, len(s_arr) - 1))
-        milestones[f"day_{day}_pct"] = round(float(s_arr[idx]), 2)
+        return float(s_arr[idx])
 
-    return t_arr, s_arr, milestones
+    milestones: Dict[str, float] = {}
+    for day in [90, 180, 365, 540, 720]:
+        milestones[f"day_{day}_pct"] = round(get_s_exact(day), 2)
+
+    s0 = 100.0
+    s180 = get_s_exact(180)
+    s365 = get_s_exact(365)
+    s540 = get_s_exact(540)
+
+    q_0_180 = 1.0 - (s180 / s0)
+    q_180_365 = 1.0 - (s365 / s180)
+    q_365_540 = 1.0 - (s540 / s365)
+
+    conditional_loss: Dict[str, float] = {
+        "q_0_to_180_pct": round(float(q_0_180 * 100.0), 2),
+        "q_180_to_365_pct": round(float(q_180_365 * 100.0), 2),
+        "q_365_to_540_pct": round(float(q_365_540 * 100.0), 2),
+        "q_0_to_180_exact": float(q_0_180),
+        "q_180_to_365_exact": float(q_180_365),
+        "q_365_to_540_exact": float(q_365_540),
+    }
+
+    return t_arr, s_arr, milestones, conditional_loss
 
 
 # -----------------------------------------------------------------------------
@@ -217,7 +241,7 @@ def load_and_validate_data(
     mrr_churn_pct = (churned_mrr / total_mrr) * 100.0
 
     # Kaplan-Meier Sağkalım Hesaplaması
-    km_t, km_s, km_milestones = compute_kaplan_meier(df)
+    km_t, km_s, km_milestones, km_conditional = compute_kaplan_meier(df)
     retention_12m_pct = km_milestones["day_365_pct"]
 
     # EDA JSON ile Çapraz Doğrulama
@@ -384,6 +408,7 @@ def load_and_validate_data(
         },
         "kaplan_meier": {
             "milestones": km_milestones,
+            "conditional_loss_probabilities": km_conditional,
             "events_up_to_90d": events_up_to_90d,
             "six_month_drops_pp": {
                 "d0_to_180_pp": d0_to_180_pp,
@@ -792,23 +817,20 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     p_fisher_s = f"{metrics['chi_square_tests']['enterprise_vs_others_fisher']['p_value']:.2f}".replace(".", ",")
 
     attention_text = (
-        f"• İstatistiksel Anlamlılık: Plan (p = {p_plan_s}), segment (p = {p_seg_s}) ve kanal (p = {p_ch_s})\n"
-        f"  farkları için p > 0,05'tir. Bu örneklemde gruplar arasında istatistiksel olarak\n"
-        f"  anlamlı bir farklılık bulunduğuna ilişkin yeterli kanıt elde edilememiştir;\n"
-        f"  bu durum grupların birbirine eşit olduğunu kanıtlamaz.\n"
-        f"• Gözlem Süresi ve Sansürleme: Süre karşılaştırmaları yeni abonelerin gözlem\n"
-        f"  süresinin kısa olması nedeniyle yanlı olabilir; bu yüzden sağdan sansürlü\n"
-        f"  gözlemleri hesaba katan Kaplan-Meier elde tutma eğrisi kullanılmıştır.\n"
-        f"• Enterprise ve Diğer Planlar (Fisher kesin test): p = {p_fisher_s}; fark anlamlı değildir."
+        f"• İstatistiksel Anlamlılık: Plan (p = {p_plan_s}), segment (p = {p_seg_s}) ve kanal (p = {p_ch_s}) için\n"
+        f"  p > 0,05'tir. Bu örneklemde gruplar arasında istatistiksel olarak anlamlı farklılık\n"
+        f"  bulunduğuna dair kanıt yoktur; bu durum grupların eşit olduğunu kanıtlamaz.\n"
+        f"• Sansürleme: Aktifler sağdan sansürlü olduğu için Kaplan-Meier eğrisi kullanılmıştır.\n"
+        f"• Enterprise Planı: Diğer planlarla fark anlamlı değildir (Fisher kesin test p = {p_fisher_s})."
     )
     ax.text(
-        0.014, 0.79,
+        0.014, 0.77,
         attention_text,
-        fontsize=7.2,
+        fontsize=8.0,
         color="#1E293B",
         va="top",
         ha="left",
-        linespacing=1.06,
+        linespacing=1.12,
         transform=ax.transAxes,
     )
 
@@ -855,23 +877,21 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     pay_pct_s = f"%{dq['payment_data_coverage_pct']:.2f}".replace(".", ",")
 
     provenance_text = (
-        f"• Veri Yapısı: Sentetik (simüle) veri seti | Gözlem birimi: {tot_str} abonelik |\n"
-        f"  Kaynakta beyan edilen veri kapsamı: 01.01.2023–31.12.2025 (doğrulanmamış).\n"
-        f"• Eksik Bölge ({reg_pct_s}): {dq['missing_region_count']} abonelikte bölge eksiktir; yapay tamamlanmamış,\n"
-        f"  veri setindeki haliyle eksik olarak korunmuştur.\n"
-        f"• Fatura & Ödeme ({bil_pct_s} / {pay_pct_s}): Fatura ({dq['billing_data_coverage_count']}) ve ödeme ({dq['payment_data_coverage_count']}) verisi ~%6'lık alt\n"
-        f"  kohortta bulunmaktadır; genellenemez. Kaynak: Analytics Engineering,\n"
-        f"  \"SaaS Subscriptions & Churn Dataset v1.0.0\" (CC BY 4.0).\n"
-        f"  Bağlantı: https://www.analyticsengineering.com/datasets/saas-subscriptions"
+        f"• Veri Yapısı: Sentetik (simüle) | {tot_str} abonelik | Kapsam: 01.01.2023–31.12.2025.\n"
+        f"• Eksik Bölge ({reg_pct_s}): {dq['missing_region_count']} abonelikte bölge eksiktir; veri setindeki haliyle korunmuştur.\n"
+        f"• Fatura & Ödeme: {tot_str} aboneliğin {dq['billing_data_coverage_count']}'sinde ({bil_pct_s}) fatura, {dq['payment_data_coverage_count']}'inde ({pay_pct_s}) ödeme\n"
+        f"  geçmişi bulunmaktadır; tüm popülasyona genellenemez.\n"
+        f"• Kaynak: Analytics Engineering — SaaS Subscriptions & Customer Churn Dataset v1.0.0\n"
+        f"  URL: https://www.analyticsengineering.com/datasets/saas-subscriptions (CC BY 4.0)"
     )
     ax.text(
-        0.516, 0.79,
+        0.516, 0.77,
         provenance_text,
-        fontsize=7.2,
+        fontsize=8.0,
         color="#1E293B",
         va="top",
         ha="left",
-        linespacing=1.06,
+        linespacing=1.10,
         transform=ax.transAxes,
     )
 
@@ -898,7 +918,7 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     ax_header.text(
         0.0, 0.98,
         "B2B MÜŞTERİ KAYBI VE ELDE TUTMA ANALİZİ",
-        fontsize=16.0,
+        fontsize=14.5,
         fontweight="bold",
         color="#0F172A",
         va="top",
@@ -926,16 +946,17 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     info_box_text = (
         f"Öğrenci: {STUDENT_NAME}  |  Öğrenci No: {STUDENT_ID}\n"
         f"Ders: {COURSE_TITLE}\n"
-        f"Kaynak: Analytics Engineering, SaaS Churn Dataset v1.0.0 (CC BY 4.0)"
+        "Kaynak: Analytics Engineering — SaaS Subscriptions\n"
+        "& Customer Churn Dataset v1.0.0 (CC BY 4.0)"
     )
     ax_header.text(
-        1.0, 0.96,
+        1.0, 0.98,
         info_box_text,
         fontsize=8.0,
         color="#1E293B",
         va="top",
         ha="right",
-        linespacing=1.28,
+        linespacing=1.20,
         bbox=dict(boxstyle="round,pad=0.38", facecolor="#FFFFFF", edgecolor="#CBD5E1", linewidth=0.9),
     )
 
@@ -976,13 +997,9 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
             "val_color": "#B91C1C",
         },
         {
-            "title": "İPTAL EDİLEN MRR PAYI (%)",
-            "title_fontsize": 7.1,
+            "title": "İPTAL MRR PAYI (%)",
             "value": f"%{kpis_data['mrr_churn_pct']:.2f}".replace(".", ","),
-            "sub": "İptal edilen aboneliklerin\nMRR / Toplam MRR oranı",
-            "sub_fontsize": 6.8,
-            "val_y": 0.52,
-            "sub_y": 0.06,
+            "sub": "İptal MRR / Toplam MRR",
             "accent": COLOR_CHURN,
             "val_color": "#B91C1C",
         },
@@ -1029,7 +1046,7 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
         ax_kpi.text(
             x0 + 0.009, 0.88,
             kpi["title"],
-            fontsize=kpi.get("title_fontsize", 8.0),
+            fontsize=8.0,
             fontweight="bold",
             color="#475569",
             va="top",
@@ -1037,7 +1054,7 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
             transform=ax_kpi.transAxes,
         )
         ax_kpi.text(
-            x0 + 0.009, kpi.get("val_y", 0.48),
+            x0 + 0.009, 0.48,
             kpi["value"],
             fontsize=20.0,
             fontweight="bold",
@@ -1047,9 +1064,9 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
             transform=ax_kpi.transAxes,
         )
         ax_kpi.text(
-            x0 + 0.009, kpi.get("sub_y", 0.10),
+            x0 + 0.009, 0.10,
             kpi["sub"],
-            fontsize=kpi.get("sub_fontsize", 8.0),
+            fontsize=8.0,
             fontweight="normal",
             color="#334155",
             va="bottom",

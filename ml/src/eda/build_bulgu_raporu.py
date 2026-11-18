@@ -76,6 +76,7 @@ def build_report_content(m: Dict[str, Any]) -> Dict[str, Any]:
     ch_pct = fmt_pct(kpis["churn_pct"], 2)
 
     tot_mrr = fmt_int(kpis["total_mrr"])
+    ch_mrr = fmt_int(kpis["churned_mrr"])
     mrr_ch_pct = fmt_pct(kpis["mrr_churn_pct"], 2)
     mrr_vs_sub_diff = fmt_pct(kpis["mrr_churn_pct"] - kpis["churn_pct"], 2)
 
@@ -86,6 +87,12 @@ def build_report_content(m: Dict[str, Any]) -> Dict[str, Any]:
     dr_1 = fmt_pct(drops["d0_to_180_pp"], 2)
     dr_2 = fmt_pct(drops["d180_to_365_pp"], 2)
     dr_3 = fmt_pct(drops["d365_to_540_pp"], 2)
+
+    cond_prob = km.get("conditional_loss_probabilities", {})
+    q_1 = fmt_pct(cond_prob.get("q_0_to_180_pct", drops["d0_to_180_pp"]), 2)
+    q_2 = fmt_pct(cond_prob.get("q_180_to_365_pct", 8.52), 2)
+    q_3 = fmt_pct(cond_prob.get("q_365_to_540_pct", 10.42), 2)
+    cond_str = f"%{q_1} → %{q_2} → %{q_3}"
 
     ent_plan = plans["Enterprise (Kurumsal Plan)"]
     ent_mrr = mrr_plans["Enterprise (Kurumsal Plan)"]
@@ -201,15 +208,15 @@ def build_report_content(m: Dict[str, Any]) -> Dict[str, Any]:
                         f"Genel Abonelik ve Gelir Kaybı: Portföydeki {tot_sub} aboneliğin {ch_sub} adedi iptal edilmiş "
                         f"olup genel müşteri kaybı (churn) oranı %{ch_pct} ({ch_sub}/{tot_sub}) düzeyindedir (aktif: "
                         f"{act_sub} / %{act_pct}). Toplam {tot_mrr} MRR portföyü içinde iptal edilen aboneliklerin "
-                        f"MRR payı %{mrr_ch_pct} (146.738 MRR) olup portföy kayıp oranı abonelik sayısındaki kayıp "
+                        f"MRR payı %{mrr_ch_pct} ({ch_mrr} MRR) olup portföy kayıp oranı abonelik sayısındaki kayıp "
                         f"payının biraz üzerindedir (%{mrr_ch_pct} ile %{ch_pct}; fark {mrr_vs_sub_diff} puan)."
                     ),
                     (
                         f"Zamana Bağlı Elde Tutma Eğrisi: Kaplan-Meier elde tutma oranı 180. günde %{km_180}, 365. günde "
-                        f"(12. ay) %{km_365} ve 540. günde (18. ay) %{km_540} düzeyindedir. İlk 90 günde neredeyse hiç "
-                        f"iptal görülmezken (1 olay), her 6 aylık dilimde sağkalım kaybı hızlanmakta ({dr_1} → {dr_2} "
-                        f"→ {dr_3} puan) ve ilgili döneme ulaşanlar için koşullu kayıp riski de artmaktadır "
-                        f"(%4,76 → %8,53 → %10,42)."
+                        f"(12. ay) %{km_365} ve 540. günde (18. ay) %{km_540} düzeyindedir. İlk 90 günde yalnızca bir "
+                        f"iptal olayı gözlenirken (1 olay), her 6 aylık dilimde sağkalım kaybı hızlanmakta ({dr_1} → "
+                        f"{dr_2} → {dr_3} puan) ve ilgili döneme ulaşanlar için koşullu kayıp riski de artmaktadır "
+                        f"({cond_str})."
                     ),
                     (
                         f"Enterprise Planının Gelir Etkisi: Enterprise (Kurumsal Plan) tüm aboneliklerin yalnızca "
@@ -238,17 +245,19 @@ def build_report_content(m: Dict[str, Any]) -> Dict[str, Any]:
                         f"Analiz bulguları birlikte değerlendirildiğinde, müşteri kaybının belirli bir abonelik planı, "
                         f"müşteri segmenti veya edinme kanalına özgü yapısal bir ayrışmadan (Ki-kare p = {p_plan} / "
                         f"{p_seg} / {p_ch}) çok, zamana yayılan bir elde tutma sorunu ile ilişkili olduğu görülmektedir. "
-                        f"İlk 90 günde iptal görülmezken kayıplar 6. aydan sonra hızlanmakta ({dr_1} → {dr_2} → {dr_3} "
-                        f"puan) ve 18. aya kadar terk riski azalmamaktadır. Benzer biçimde Enterprise planının önceliği, "
-                        f"daha yüksek bir terk eğiliminden (Fisher p = {p_fisher}) değil, portföy gelirinin %{ent_mrr_share}'unu "
-                        f"ve kayıp gelirin %{ent_lost_share}'ini barındıran yüksek gelir ağırlığından kaynaklanmaktadır; "
-                        "bu bulgular nedensellik iddiası taşımamakta olup gözlemsel ilişkisellik çerçevesinde yorumlanmalıdır."
+                        f"İlk 90 günde yalnızca bir iptal olayı gözlenirken kayıplar 6. aydan sonra hızlanmakta ({dr_1} → "
+                        f"{dr_2} → {dr_3} puan) ve 18. aya kadar terk riski azalmamaktadır. Benzer biçimde Enterprise "
+                        f"planının önceliği, daha yüksek bir terk eğiliminden (Fisher p = {p_fisher}) değil, portföy "
+                        f"gelirinin %{ent_mrr_share}'unu ve kayıp gelirin %{ent_lost_share}'ini barındıran yüksek gelir "
+                        "ağırlığından kaynaklanmaktadır; bu bulgular nedensellik iddiası taşımamakta olup gözlemsel "
+                        "ilişkisellik çerçevesinde yorumlanmalıdır."
                     ),
                     (
-                        f"Sınırlılıklar: Çalışma; verinin sentetik (simüle) olması, fatura (%{bil_pct}; {bil_cnt} kayıt) "
-                        f"ve ödeme (%{pay_pct}; {pay_cnt} kayıt) verilerinin yalnızca ~%6'lık alt kohortta bulunması, "
-                        f"bölge bilgisinin %{reg_miss_pct} ({reg_miss_cnt} kayıt) oranında eksik olması ve anlamlılık "
-                        "testlerinin çoklu test düzeltmesiz keşifsel nitelik taşıması nedeniyle sınırlılık içerir."
+                        f"Sınırlılıklar: Çalışma; verinin sentetik (simüle) olması, {tot_sub} aboneliğin {bil_cnt}'sinde "
+                        f"(%{bil_pct}) fatura geçmişi, {pay_cnt}'sinde (%{pay_pct}) ödeme geçmişi bulunması nedeniyle "
+                        f"fatura ve ödeme analizlerinin tüm abonelik popülasyonuna genellenememesi, bölge bilgisinin "
+                        f"%{reg_miss_pct} ({reg_miss_cnt} abonelik) oranında eksik olması ve anlamlılık testlerinin "
+                        "çoklu test düzeltmesiz keşifsel nitelik taşıması nedeniyle sınırlılık içerir."
                     ),
                     (
                         f"Genel Sonuç: Enterprise ve Ölçek planları birlikte toplam MRR'nin %{ent_scale_tot_str}'sini "
@@ -282,7 +291,7 @@ def write_docx_report(content: Dict[str, Any], docx_path: Path) -> None:
         f"""
         <w:p>
           <w:pPr>
-            <w:spacing w:before="0" w:after="40" w:line="240" w:lineRule="auto"/>
+            <w:spacing w:before="0" w:after="25" w:line="235" w:lineRule="auto"/>
           </w:pPr>
           <w:r>
             <w:rPr>
@@ -297,7 +306,7 @@ def write_docx_report(content: Dict[str, Any], docx_path: Path) -> None:
         </w:p>
         <w:p>
           <w:pPr>
-            <w:spacing w:before="0" w:after="40" w:line="230" w:lineRule="auto"/>
+            <w:spacing w:before="0" w:after="25" w:line="225" w:lineRule="auto"/>
           </w:pPr>
           <w:r>
             <w:rPr>
@@ -315,7 +324,7 @@ def write_docx_report(content: Dict[str, Any], docx_path: Path) -> None:
             <w:pBdr>
               <w:bottom w:val="single" w:sz="6" w:space="4" w:color="CBD5E1"/>
             </w:pBdr>
-            <w:spacing w:before="0" w:after="110" w:line="220" w:lineRule="auto"/>
+            <w:spacing w:before="0" w:after="80" w:line="220" w:lineRule="auto"/>
           </w:pPr>
           <w:r>
             <w:rPr>
@@ -336,7 +345,7 @@ def write_docx_report(content: Dict[str, Any], docx_path: Path) -> None:
             f"""
             <w:p>
               <w:pPr>
-                <w:spacing w:before="90" w:after="45" w:line="230" w:lineRule="auto"/>
+                <w:spacing w:before="65" w:after="30" w:line="225" w:lineRule="auto"/>
               </w:pPr>
               <w:r>
                 <w:rPr>
@@ -359,7 +368,7 @@ def write_docx_report(content: Dict[str, Any], docx_path: Path) -> None:
                 <w:p>
                   <w:pPr>
                     <w:jc w:val="both"/>
-                    <w:spacing w:before="0" w:after="65" w:line="228" w:lineRule="auto"/>
+                    <w:spacing w:before="0" w:after="45" w:line="222" w:lineRule="auto"/>
                   </w:pPr>
                   <w:r>
                     <w:rPr>
@@ -380,9 +389,9 @@ def write_docx_report(content: Dict[str, Any], docx_path: Path) -> None:
                 f"""
                 <w:p>
                   <w:pPr>
-                    <w:ind w:left="220" w:hanging="160"/>
+                    <w:ind w:left="200" w:hanging="140"/>
                     <w:jc w:val="both"/>
-                    <w:spacing w:before="0" w:after="55" w:line="226" w:lineRule="auto"/>
+                    <w:spacing w:before="0" w:after="36" w:line="220" w:lineRule="auto"/>
                   </w:pPr>
                   <w:r>
                     <w:rPr>
@@ -402,7 +411,7 @@ def write_docx_report(content: Dict[str, Any], docx_path: Path) -> None:
         """
         <w:sectPr>
           <w:pgSz w:w="11906" w:h="16838"/>
-          <w:pgMar w:top="680" w:right="780" w:bottom="680" w:left="780" w:header="360" w:footer="360" w:gutter="0"/>
+          <w:pgMar w:top="560" w:right="720" w:bottom="560" w:left="720" w:header="360" w:footer="360" w:gutter="0"/>
         </w:sectPr>
         """
     )
@@ -491,9 +500,17 @@ def verify_report_numbers_against_json(content: Dict[str, Any], m: Dict[str, Any
         (ent_mrr["churned_mrr"] + scale_mrr["churned_mrr"]) / kpis["churned_mrr"]
     ) * 100.0
 
+    cond_prob = km.get("conditional_loss_probabilities", {})
+    cond_str = (
+        f"%{fmt_pct(cond_prob.get('q_0_to_180_pct', drops['d0_to_180_pp']), 2)} → "
+        f"%{fmt_pct(cond_prob.get('q_180_to_365_pct', 8.52), 2)} → "
+        f"%{fmt_pct(cond_prob.get('q_365_to_540_pct', 10.42), 2)}"
+    )
+
     expected_tokens = [
         m["student_info"]["name"],
         m["student_info"]["student_id"],
+        m["data_provenance"]["source"],
         "B2B Müşteri Kaybı ve Elde Tutma Analizi",
         "SaaS Abonelik Müşteri Kaybı: Keşifsel Veri Analizi",
         "Abonelik Süresine Göre Elde Tutma Eğrisi",
@@ -502,16 +519,21 @@ def verify_report_numbers_against_json(content: Dict[str, Any], m: Dict[str, Any
         "Segmentlere Göre Kayıp Farklılaşıyor mu?",
         "Edinme Kanalına Göre Kayıp Oranı Farklılaşıyor mu?",
         "sansürlü gözlemleri hesaba katan",
+        "İlk 90 günde yalnızca bir iptal olayı gözlenirken",
+        "fatura geçmişi",
+        "ödeme geçmişi",
         fmt_int(kpis["total_subscriptions"]),
         fmt_int(kpis["active_subscriptions"]),
         fmt_int(kpis["churned_subscriptions"]),
         f"%{fmt_pct(kpis['churn_pct'], 2)} ({fmt_int(kpis['churned_subscriptions'])}/{fmt_int(kpis['total_subscriptions'])})",
         fmt_pct(kpis["mrr_churn_pct"], 2),
+        f"({fmt_int(kpis['churned_mrr'])} MRR)",
         fmt_pct(kpis["mrr_churn_pct"] - kpis["churn_pct"], 2),
         fmt_pct(ms["day_180_pct"], 2),
         fmt_pct(ms["day_365_pct"], 2),
         fmt_pct(ms["day_540_pct"], 2),
         f"{fmt_pct(drops['d0_to_180_pp'], 2)} → {fmt_pct(drops['d180_to_365_pp'], 2)} → {fmt_pct(drops['d365_to_540_pp'], 2)} puan",
+        cond_str,
         fmt_pct(plans["Enterprise (Kurumsal Plan)"]["subscription_share_pct"], 2),
         fmt_pct(ent_mrr["total_mrr_share_pct"], 2),
         fmt_pct(ent_mrr["churned_mrr_share_pct"], 2),

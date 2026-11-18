@@ -108,9 +108,10 @@ def test_kaplan_meier_and_chi_square_metrics(
     raw_csv_df: pd.DataFrame, dashboard_metrics: dict
 ) -> None:
     """
-    Verifies Kaplan-Meier retention milestones (180, 365, 540 days) and Chi-Square p-values.
+    Verifies Kaplan-Meier retention milestones (180, 365, 540 days),
+    conditional loss probabilities, and Chi-Square p-values.
     """
-    _, _, milestones = compute_kaplan_meier(raw_csv_df)
+    _, _, milestones, conditional = compute_kaplan_meier(raw_csv_df)
     km_json = dashboard_metrics["kaplan_meier"]["milestones"]
 
     for key in ["day_180_pct", "day_365_pct", "day_540_pct"]:
@@ -123,6 +124,15 @@ def test_kaplan_meier_and_chi_square_metrics(
         abs_tol=1e-2,
     )
 
+    # Verify conditional loss probabilities q(a, b) = 1 - S(b)/S(a)
+    cond_json = dashboard_metrics["kaplan_meier"]["conditional_loss_probabilities"]
+    assert math.isclose(cond_json["q_0_to_180_pct"], 4.76, abs_tol=1e-2)
+    assert math.isclose(cond_json["q_180_to_365_pct"], 8.52, abs_tol=1e-2)
+    assert math.isclose(cond_json["q_365_to_540_pct"], 10.42, abs_tol=1e-2)
+    assert math.isclose(cond_json["q_0_to_180_pct"], conditional["q_0_to_180_pct"], abs_tol=1e-2)
+    assert math.isclose(cond_json["q_180_to_365_pct"], conditional["q_180_to_365_pct"], abs_tol=1e-2)
+    assert math.isclose(cond_json["q_365_to_540_pct"], conditional["q_365_to_540_pct"], abs_tol=1e-2)
+
     chi2_tests = dashboard_metrics["chi_square_tests"]
     for col in ["plan_name", "segment", "acquisition_channel"]:
         assert col in chi2_tests
@@ -132,11 +142,29 @@ def test_kaplan_meier_and_chi_square_metrics(
         assert chi2_tests[col]["significant_at_0_05"] is False
 
 
-def test_dashboard_deliverables_exist() -> None:
-    """Verifies that PDF, PNG, and JSON outputs exist and are non-empty."""
+def test_billing_and_payment_coverage_semantics(
+    raw_csv_df: pd.DataFrame, dashboard_metrics: dict
+) -> None:
+    """
+    Verifies that billing and payment coverage metrics represent subscription counts
+    (has_billing_data and has_payment_data flags), NOT counts of invoices or transactions.
+    """
+    dq = dashboard_metrics["data_quality_limitations"]
+    assert dq["billing_data_coverage_count"] == int((raw_csv_df["has_billing_data"] == 1).sum()) == 120
+    assert dq["payment_data_coverage_count"] == int((raw_csv_df["has_payment_data"] == 1).sum()) == 118
+    assert math.isclose(dq["billing_data_coverage_pct"], (120 / 2000) * 100.0, abs_tol=1e-2)
+    assert math.isclose(dq["payment_data_coverage_pct"], (118 / 2000) * 100.0, abs_tol=1e-2)
+
+
+def test_dashboard_deliverables_exist_and_single_page() -> None:
+    """Verifies that PDF, PNG, and JSON outputs exist, are non-empty, and PDF is single-page."""
     assert OUTPUT_PDF_PATH.exists() and OUTPUT_PDF_PATH.stat().st_size > 0
     assert OUTPUT_PNG_PATH.exists() and OUTPUT_PNG_PATH.stat().st_size > 0
     assert OUTPUT_JSON_PATH.exists() and OUTPUT_JSON_PATH.stat().st_size > 0
+
+    from ml.src.eda.build_bulgu_raporu import verify_pdf_single_page
+
+    assert verify_pdf_single_page(OUTPUT_PDF_PATH) == 1
 
 
 def test_bulgu_raporu_consistency_and_single_page(dashboard_metrics: dict) -> None:

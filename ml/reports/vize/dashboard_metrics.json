@@ -2,7 +2,7 @@
   "validation_status": "SUCCESS",
   "student_info": {
     "name": "Ahmetcan Bağlı",
-    "student_id": "Belirtilmedi",
+    "student_id": "2516016010",
     "course": "Uygulamalı Veri Analizi Dersi - Vize Çalışması"
   },
   "data_provenance": {
@@ -20,41 +20,45 @@
     "churn_pct": 20.5
   },
   "plan_analysis": {
-    "Enterprise": {
+    "Kurumsal": {
+      "raw_key": "Enterprise",
       "total": 104,
       "churned": 26,
       "churn_rate_pct": 25.0
     },
-    "Growth": {
+    "Büyüme": {
+      "raw_key": "Growth",
       "total": 669,
       "churned": 138,
       "churn_rate_pct": 20.63
     },
-    "Scale": {
+    "Ölçek": {
+      "raw_key": "Scale",
       "total": 272,
       "churned": 52,
       "churn_rate_pct": 19.12
     },
-    "Starter": {
+    "Başlangıç": {
+      "raw_key": "Starter",
       "total": 955,
       "churned": 194,
       "churn_rate_pct": 20.31
     }
   },
   "segment_analysis": {
-    "SMB": {
+    "KOBİ": {
       "raw_key": "SMB",
       "total": 1407,
       "churned": 303,
       "churn_rate_pct": 21.54
     },
-    "Enterprise": {
+    "Kurumsal": {
       "raw_key": "enterprise",
       "total": 121,
       "churned": 26,
       "churn_rate_pct": 21.49
     },
-    "Orta Ölçekli Pazar (Mid-market)": {
+    "Orta Ölçekli Pazar": {
       "raw_key": "mid_market",
       "total": 472,
       "churned": 81,
@@ -68,7 +72,7 @@
       "churned": 87,
       "churn_rate_pct": 22.6
     },
-    "Giden Pazarlama (Outbound)": {
+    "Giden Pazarlama": {
       "raw_key": "outbound",
       "total": 389,
       "churned": 87,

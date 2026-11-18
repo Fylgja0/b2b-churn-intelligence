@@ -34,17 +34,40 @@ import numpy as np
 import pandas as pd
 
 # -----------------------------------------------------------------------------
-# YAPILANDIRMA VE SABİTLER (Kolayca düzenlenebilir alanlar)
+# YAPILANDIRMA VE SABİTLER
 # -----------------------------------------------------------------------------
 STUDENT_NAME = "Ahmetcan Bağlı"
-# Öğrenci Numarası: Rastgele veya uydurma değer verilmemiştir.
-# Sınav teslimi öncesinde gerekirse aşağıdaki değişkene gerçek numaranızı yazınız.
-STUDENT_ID = "Belirtilmedi"
+STUDENT_ID = "2516016010"
 COURSE_TITLE = "Uygulamalı Veri Analizi Dersi - Vize Çalışması"
 DATA_SOURCE_NAME = "Analytics Engineering, 'SaaS Subscriptions & Customer Churn Dataset v1.0.0'"
 DATA_SOURCE_URL = "https://www.analyticsengineering.com/datasets/saas-subscriptions"
 DATA_LICENSE = "Creative Commons Attribution 4.0 International (CC BY 4.0)"
 DECLARED_DATE_RANGE = "01.01.2023 – 31.12.2025"
+
+# Görsel sunum katmanı Türkçe kategori eşlemeleri (CSV'deki ham veriler korunur)
+PLAN_TR_MAP = {
+    "Enterprise": "Kurumsal",
+    "Growth": "Büyüme",
+    "Starter": "Başlangıç",
+    "Scale": "Ölçek",
+}
+
+SEGMENT_TR_MAP = {
+    "SMB": "KOBİ",
+    "enterprise": "Kurumsal",
+    "mid_market": "Orta Ölçekli Pazar",
+}
+
+CHANNEL_TR_MAP = {
+    "organic": "Organik",
+    "outbound": "Giden Pazarlama",
+    "paid_search": "Ücretli Arama",
+    "referral": "Tavsiye",
+    "partner": "İş Ortağı",
+}
+
+# Tolerans sabitleri
+FLOAT_ABS_TOL = 1e-2  # Yüzdelik oran karşılaştırma toleransı (%0.01)
 
 # Dosya yolları (pathlib ile güvenilir çözümleme)
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -53,6 +76,7 @@ ML_DIR = SRC_DIR.parent
 REPO_ROOT = ML_DIR.parent
 
 DATASET_PATH = ML_DIR / "data" / "processed" / "merged" / "account_level_eda_dataset.csv"
+EDA_METRICS_PATH = ML_DIR / "reports" / "eda" / "eda_metrics.json"
 OUTPUT_DIR = ML_DIR / "reports" / "vize"
 OUTPUT_PDF_PATH = OUTPUT_DIR / "churn_intelligence_dashboard.pdf"
 OUTPUT_PNG_PATH = OUTPUT_DIR / "churn_intelligence_dashboard.png"
@@ -72,113 +96,163 @@ plt.rcParams["axes.unicode_minus"] = False
 
 
 # -----------------------------------------------------------------------------
-# VERİ YÜKLEME VE HESAPLAMA MOTORU
+# VERİ YÜKLEME VE ÇOK KATMANLI DOĞRULAMA MOTORU
 # -----------------------------------------------------------------------------
-def load_and_validate_data(csv_path: Path) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+def load_and_validate_data(
+    csv_path: Path, eda_json_path: Path
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
-    Veri setini yükler, EDA metriklerini dinamik olarak hesaplar
-    ve beklenen değerlerle titiz doğrulama gerçekleştirir.
+    Veri setini ve mevcut EDA metriklerini yükler, çok katmanlı doğrulama yapar:
+      1. Sütun bütünlüğü, geçerli değer kümeleri ve durum-churn çapraz tutarlılığı.
+      2. Dinamik hesaplanan portföy metrikleri ile beklenen değer kontrolleri.
+      3. Dinamik hesaplanan değerler ile ml/reports/eda/eda_metrics.json karşılaştırması.
     """
     if not csv_path.exists():
         raise FileNotFoundError(f"Veri seti bulunamadı: {csv_path}")
+    if not eda_json_path.exists():
+        raise FileNotFoundError(f"EDA metrikleri JSON dosyası bulunamadı: {eda_json_path}")
 
     logger.info("Veri seti yükleniyor: %s", csv_path)
     df = pd.read_csv(csv_path)
 
+    logger.info("EDA metrikleri referans dosyası yükleniyor: %s", eda_json_path)
+    with open(eda_json_path, "r", encoding="utf-8") as f:
+        eda_ref = json.load(f)
+
+    # -------------------------------------------------------------------------
+    # 1. ADIM: Sütun Bütünlüğü ve Durum-Churn Tutarlılık Kontrolleri
+    # -------------------------------------------------------------------------
+    unique_statuses = set(df["status"].dropna().unique())
+    expected_statuses = {"active", "cancelled"}
+    if unique_statuses != expected_statuses:
+        raise ValueError(
+            f"Veri doğrulama hatası: 'status' sütununda beklenmeyen değerler var! "
+            f"Beklenen: {expected_statuses}, Bulunan: {unique_statuses}"
+        )
+
+    unique_churn = set(df["churn"].dropna().unique())
+    expected_churn = {0, 1}
+    if unique_churn != expected_churn:
+        raise ValueError(
+            f"Veri doğrulama hatası: 'churn' sütununda beklenmeyen değerler var! "
+            f"Beklenen: {expected_churn}, Bulunan: {unique_churn}"
+        )
+
+    active_mismatch = df[(df["status"] == "active") & (df["churn"] != 0)]
+    if len(active_mismatch) > 0:
+        raise ValueError(
+            f"Çapraz doğrulama hatası: 'status' active olan {len(active_mismatch)} kaydın 'churn' değeri 0 değil!"
+        )
+
+    cancelled_mismatch = df[(df["status"] == "cancelled") & (df["churn"] != 1)]
+    if len(cancelled_mismatch) > 0:
+        raise ValueError(
+            f"Çapraz doğrulama hatası: 'status' cancelled olan {len(cancelled_mismatch)} kaydın 'churn' değeri 1 değil!"
+        )
+
+    logger.info("Durum ve churn mantıksal tutarlılık kontrolleri başarıyla tamamlandı.")
+
+    # -------------------------------------------------------------------------
+    # 2. ADIM: Dinamik Hesaplamalar ve Temel Doğrulama
+    # -------------------------------------------------------------------------
     total_records = len(df)
     active_count = int((df["status"] == "active").sum())
     churn_count = int((df["churn"] == 1).sum())
     overall_churn_rate = (churn_count / total_records) * 100 if total_records > 0 else 0.0
 
-    # Doğrulama: Toplam gözlem ve durum dağılımı
     if total_records != 2000:
-        raise ValueError(f"Veri doğrulama hatası: Toplam kayıt 2000 olmalı, bulunan: {total_records}")
+        raise ValueError(f"Doğrulama hatası: Toplam kayıt 2000 olmalı, bulunan: {total_records}")
     if active_count != 1590:
-        raise ValueError(f"Veri doğrulama hatası: Aktif abonelik 1590 olmalı, bulunan: {active_count}")
+        raise ValueError(f"Doğrulama hatası: Aktif abonelik 1590 olmalı, bulunan: {active_count}")
     if churn_count != 410:
-        raise ValueError(f"Veri doğrulama hatası: İptal edilmiş abonelik 410 olmalı, bulunan: {churn_count}")
-    if not math.isclose(overall_churn_rate, 20.50, abs_tol=1e-2):
-        raise ValueError(f"Veri doğrulama hatası: Genel churn oranı %20.50 olmalı, bulunan: %{overall_churn_rate:.2f}")
+        raise ValueError(f"Doğrulama hatası: İptal edilmiş abonelik 410 olmalı, bulunan: {churn_count}")
+    if not math.isclose(overall_churn_rate, 20.50, abs_tol=FLOAT_ABS_TOL):
+        raise ValueError(f"Doğrulama hatası: Genel churn oranı %20.50 olmalı, bulunan: %{overall_churn_rate:.2f}")
 
-    # 1. Plan bazlı hesaplama ve doğrulama
-    plan_expected = {
-        "Enterprise": {"total": 104, "churned": 26, "rate": 25.00},
-        "Growth": {"total": 669, "churned": 138, "rate": 20.63},
-        "Starter": {"total": 955, "churned": 194, "rate": 20.31},
-        "Scale": {"total": 272, "churned": 52, "rate": 19.12},
-    }
+    # -------------------------------------------------------------------------
+    # 3. ADIM: Mevcut EDA Raporu (eda_metrics.json) ile Karşılaştırma
+    # -------------------------------------------------------------------------
+    if total_records != eda_ref["total_subscriptions"]:
+        raise ValueError(
+            f"EDA JSON uyuşmazlığı: Toplam abonelik ({total_records} != {eda_ref['total_subscriptions']})"
+        )
+    if active_count != eda_ref["active_subscriptions"]:
+        raise ValueError(
+            f"EDA JSON uyuşmazlığı: Aktif abonelik ({active_count} != {eda_ref['active_subscriptions']})"
+        )
+    if churn_count != eda_ref["churned_subscriptions"]:
+        raise ValueError(
+            f"EDA JSON uyuşmazlığı: İptal abonelik ({churn_count} != {eda_ref['churned_subscriptions']})"
+        )
+    if not math.isclose(overall_churn_rate, eda_ref["overall_churn_rate_pct"], abs_tol=FLOAT_ABS_TOL):
+        raise ValueError(
+            f"EDA JSON uyuşmazlığı: Genel churn oranı (%{overall_churn_rate:.2f} != %{eda_ref['overall_churn_rate_pct']:.2f})"
+        )
+
+    # Plan bazlı hesaplama ve EDA JSON karşılaştırması
     plan_calc = (
         df.groupby("plan_name")["churn"]
         .agg(total="count", churned="sum", churn_rate=lambda s: s.mean() * 100)
         .to_dict(orient="index")
     )
-    for p_name, exp in plan_expected.items():
+    for p_name, exp_eda in eda_ref["plan_metrics"].items():
         if p_name not in plan_calc:
-            raise ValueError(f"Plan metrik doğrulama hatası: '{p_name}' planı veride bulunamadı.")
+            raise ValueError(f"Plan doğrulama hatası: '{p_name}' planı dinamik veride bulunamadı.")
         calc = plan_calc[p_name]
-        if calc["total"] != exp["total"] or calc["churned"] != exp["churned"]:
+        if calc["total"] != exp_eda["total"] or calc["churned"] != exp_eda["churned"]:
             raise ValueError(
-                f"Plan '{p_name}' sayı uyuşmazlığı: Beklenen (n={exp['total']}, churn={exp['churned']}), "
-                f"Hesaplanan (n={calc['total']}, churn={calc['churned']})"
+                f"Plan '{p_name}' sayı uyuşmazlığı (EDA JSON): Dinamik (n={calc['total']}, churn={calc['churned']}), "
+                f"EDA JSON (n={exp_eda['total']}, churn={exp_eda['churned']})"
             )
-        if not math.isclose(calc["churn_rate"], exp["rate"], abs_tol=0.02):
+        if not math.isclose(calc["churn_rate"], exp_eda["churn_rate"], abs_tol=FLOAT_ABS_TOL):
             raise ValueError(
-                f"Plan '{p_name}' oran uyuşmazlığı: Beklenen %{exp['rate']:.2f}, Hesaplanan %{calc['churn_rate']:.2f}"
+                f"Plan '{p_name}' oran uyuşmazlığı (EDA JSON): Dinamik %{calc['churn_rate']:.2f}, "
+                f"EDA JSON %{exp_eda['churn_rate']:.2f}"
             )
 
-    # 2. Segment bazlı hesaplama ve doğrulama
-    segment_expected = {
-        "SMB": {"total": 1407, "churned": 303, "rate": 21.54, "tr_name": "SMB"},
-        "enterprise": {"total": 121, "churned": 26, "rate": 21.49, "tr_name": "Enterprise"},
-        "mid_market": {"total": 472, "churned": 81, "rate": 17.16, "tr_name": "Orta Ölçekli Pazar (Mid-market)"},
-    }
+    # Segment bazlı hesaplama ve EDA JSON karşılaştırması
     seg_calc = (
         df.groupby("segment")["churn"]
         .agg(total="count", churned="sum", churn_rate=lambda s: s.mean() * 100)
         .to_dict(orient="index")
     )
-    for s_name, exp in segment_expected.items():
+    for s_name, exp_eda in eda_ref["segment_metrics"].items():
         if s_name not in seg_calc:
-            raise ValueError(f"Segment metrik doğrulama hatası: '{s_name}' segmenti veride bulunamadı.")
+            raise ValueError(f"Segment doğrulama hatası: '{s_name}' segmenti dinamik veride bulunamadı.")
         calc = seg_calc[s_name]
-        if calc["total"] != exp["total"] or calc["churned"] != exp["churned"]:
+        if calc["total"] != exp_eda["total"] or calc["churned"] != exp_eda["churned"]:
             raise ValueError(
-                f"Segment '{s_name}' sayı uyuşmazlığı: Beklenen (n={exp['total']}, churn={exp['churned']}), "
-                f"Hesaplanan (n={calc['total']}, churn={calc['churned']})"
+                f"Segment '{s_name}' sayı uyuşmazlığı (EDA JSON): Dinamik (n={calc['total']}, churn={calc['churned']}), "
+                f"EDA JSON (n={exp_eda['total']}, churn={exp_eda['churned']})"
             )
-        if not math.isclose(calc["churn_rate"], exp["rate"], abs_tol=0.02):
+        if not math.isclose(calc["churn_rate"], exp_eda["churn_rate"], abs_tol=FLOAT_ABS_TOL):
             raise ValueError(
-                f"Segment '{s_name}' oran uyuşmazlığı: Beklenen %{exp['rate']:.2f}, Hesaplanan %{calc['churn_rate']:.2f}"
+                f"Segment '{s_name}' oran uyuşmazlığı (EDA JSON): Dinamik %{calc['churn_rate']:.2f}, "
+                f"EDA JSON %{exp_eda['churn_rate']:.2f}"
             )
 
-    # 3. Kanal bazlı hesaplama ve doğrulama
-    channel_expected = {
-        "organic": {"total": 385, "churned": 87, "rate": 22.60, "tr_name": "Organik"},
-        "outbound": {"total": 389, "churned": 87, "rate": 22.37, "tr_name": "Giden Pazarlama (Outbound)"},
-        "paid_search": {"total": 404, "churned": 86, "rate": 21.29, "tr_name": "Ücretli Arama"},
-        "referral": {"total": 422, "churned": 78, "rate": 18.48, "tr_name": "Tavsiye"},
-        "partner": {"total": 400, "churned": 72, "rate": 18.00, "tr_name": "İş Ortağı"},
-    }
+    # Kanal bazlı hesaplama ve EDA JSON karşılaştırması
     ch_calc = (
         df.groupby("acquisition_channel")["churn"]
         .agg(total="count", churned="sum", churn_rate=lambda s: s.mean() * 100)
         .to_dict(orient="index")
     )
-    for c_name, exp in channel_expected.items():
+    for c_name, exp_eda in eda_ref["channel_metrics"].items():
         if c_name not in ch_calc:
-            raise ValueError(f"Kanal metrik doğrulama hatası: '{c_name}' kanalı veride bulunamadı.")
+            raise ValueError(f"Kanal doğrulama hatası: '{c_name}' kanalı dinamik veride bulunamadı.")
         calc = ch_calc[c_name]
-        if calc["total"] != exp["total"] or calc["churned"] != exp["churned"]:
+        if calc["total"] != exp_eda["total"] or calc["churned"] != exp_eda["churned"]:
             raise ValueError(
-                f"Kanal '{c_name}' sayı uyuşmazlığı: Beklenen (n={exp['total']}, churn={exp['churned']}), "
-                f"Hesaplanan (n={calc['total']}, churn={calc['churned']})"
+                f"Kanal '{c_name}' sayı uyuşmazlığı (EDA JSON): Dinamik (n={calc['total']}, churn={calc['churned']}), "
+                f"EDA JSON (n={exp_eda['total']}, churn={exp_eda['churned']})"
             )
-        if not math.isclose(calc["churn_rate"], exp["rate"], abs_tol=0.02):
+        if not math.isclose(calc["churn_rate"], exp_eda["churn_rate"], abs_tol=FLOAT_ABS_TOL):
             raise ValueError(
-                f"Kanal '{c_name}' oran uyuşmazlığı: Beklenen %{exp['rate']:.2f}, Hesaplanan %{calc['churn_rate']:.2f}"
+                f"Kanal '{c_name}' oran uyuşmazlığı (EDA JSON): Dinamik %{calc['churn_rate']:.2f}, "
+                f"EDA JSON %{exp_eda['churn_rate']:.2f}"
             )
 
-    # 4. Veri kalitesi kontrolleri
+    # 4. Veri kalitesi sayıları
     missing_region_count = int(df["region"].isna().sum())
     missing_region_pct = (missing_region_count / total_records) * 100
     billing_data_count = int(df["has_billing_data"].sum())
@@ -193,7 +267,7 @@ def load_and_validate_data(csv_path: Path) -> Tuple[pd.DataFrame, Dict[str, Any]
     if payment_data_count != 118:
         raise ValueError(f"Ödeme verisi kapsamı doğrulama hatası: Beklenen 118, bulunan: {payment_data_count}")
 
-    logger.info("Tüm veri bütünlüğü ve metrik doğrulama kontrolleri başarıyla geçildi.")
+    logger.info("Tüm veri bütünlüğü ve EDA JSON çapraz kontrolleri başarıyla geçildi.")
 
     metrics: Dict[str, Any] = {
         "validation_status": "SUCCESS",
@@ -217,7 +291,8 @@ def load_and_validate_data(csv_path: Path) -> Tuple[pd.DataFrame, Dict[str, Any]
             "churn_pct": round(overall_churn_rate, 2),
         },
         "plan_analysis": {
-            name: {
+            PLAN_TR_MAP.get(name, name): {
+                "raw_key": name,
                 "total": int(data["total"]),
                 "churned": int(data["churned"]),
                 "churn_rate_pct": round(float(data["churn_rate"]), 2),
@@ -225,7 +300,7 @@ def load_and_validate_data(csv_path: Path) -> Tuple[pd.DataFrame, Dict[str, Any]
             for name, data in plan_calc.items()
         },
         "segment_analysis": {
-            segment_expected[name]["tr_name"]: {
+            SEGMENT_TR_MAP.get(name, name): {
                 "raw_key": name,
                 "total": int(data["total"]),
                 "churned": int(data["churned"]),
@@ -234,7 +309,7 @@ def load_and_validate_data(csv_path: Path) -> Tuple[pd.DataFrame, Dict[str, Any]
             for name, data in seg_calc.items()
         },
         "channel_analysis": {
-            channel_expected[name]["tr_name"]: {
+            CHANNEL_TR_MAP.get(name, name): {
                 "raw_key": name,
                 "total": int(data["total"]),
                 "churned": int(data["churned"]),
@@ -261,6 +336,7 @@ def load_and_validate_data(csv_path: Path) -> Tuple[pd.DataFrame, Dict[str, Any]
 def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figure:
     """
     A4 Yatay formatında, sıfır çakışmalı, profesyonel kurumsal BI dashboardu oluşturur.
+    Tüm görünür metinler tamamen Türkçe, alt panel metinleri 7,6–7,8 puntodur.
     """
     fig_width = 11.693  # 297 mm
     fig_height = 8.268  # 210 mm
@@ -274,10 +350,10 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     ax_header = fig.add_axes([0.040, 0.865, 0.920, 0.100])
     ax_header.axis("off")
 
-    # Sol Başlık Grubu
+    # Sol Başlık Grubu (Tamamen Türkçe)
     ax_header.text(
         0.0, 0.96,
-        "CHURN INTELLIGENCE",
+        "B2B MÜŞTERİ KAYBI ANALİZİ",
         fontsize=18,
         fontweight="bold",
         color="#0F172A",
@@ -286,7 +362,7 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     )
     ax_header.text(
         0.0, 0.46,
-        "B2B SaaS Müşteri Kaybı Analizi",
+        "SaaS Abonelik ve Terk Davranışları İncelemesi",
         fontsize=11.5,
         fontweight="bold",
         color="#1E3A8A",
@@ -324,7 +400,7 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     # -------------------------------------------------------------------------
     # 2. BÖLÜM: 4 ADET KPI GÖSTERGE KARTI
     # -------------------------------------------------------------------------
-    ax_kpi = fig.add_axes([0.040, 0.745, 0.920, 0.098])
+    ax_kpi = fig.add_axes([0.040, 0.748, 0.920, 0.096])
     ax_kpi.axis("off")
 
     kpis = [
@@ -337,19 +413,19 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
         {
             "title": "AKTİF ABONELİK",
             "value": f"{metrics['overall_kpis']['active_subscriptions']:,}".replace(",", "."),
-            "sub": f"%{metrics['overall_kpis']['active_pct']:.2f} Sürdüren Müşteri".replace(".", ","),
+            "sub": f"Toplam aboneliklerin %{metrics['overall_kpis']['active_pct']:.2f}'si".replace(".", ","),
             "accent": "#16A34A",  # Pozitif Yeşil
         },
         {
             "title": "İPTAL EDİLMİŞ ABONELİK",
             "value": f"{metrics['overall_kpis']['churned_subscriptions']:,}".replace(",", "."),
-            "sub": f"%{metrics['overall_kpis']['churn_pct']:.2f} Sözleşmesi Sonlanan".replace(".", ","),
+            "sub": f"Toplam aboneliklerin %{metrics['overall_kpis']['churn_pct']:.2f}'si".replace(".", ","),
             "accent": "#DC2626",  # Uyarıcı Kırmızı
         },
         {
             "title": "GENEL MÜŞTERİ KAYBI ORANI",
             "value": f"%{metrics['overall_kpis']['churn_pct']:.2f}".replace(".", ","),
-            "sub": "Tüm Portföy Kıyas Eşiği",
+            "sub": "Genel oran referansı",
             "accent": "#D97706",  # Kehribar / Turuncu
         },
     ]
@@ -419,41 +495,42 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     # 3. BÖLÜM: 2x2 GRAFİK YERLEŞİMİ (KART ARKA PLANLARI İLE)
     # -------------------------------------------------------------------------
     # Kart 1 Arka Planı (Sol Üst)
-    ax_card1 = fig.add_axes([0.040, 0.450, 0.445, 0.270])
+    ax_card1 = fig.add_axes([0.040, 0.465, 0.445, 0.260])
     draw_card_background(ax_card1, "Genel Abonelik Durumu Dağılımı")
 
     # Kart 2 Arka Planı (Sağ Üst)
-    ax_card2 = fig.add_axes([0.515, 0.450, 0.445, 0.270])
+    ax_card2 = fig.add_axes([0.515, 0.465, 0.445, 0.260])
     draw_card_background(ax_card2, "Abonelik Planlarına Göre Müşteri Kaybı Oranı")
 
     # Kart 3 Arka Planı (Sol Alt)
-    ax_card3 = fig.add_axes([0.040, 0.165, 0.445, 0.260])
+    ax_card3 = fig.add_axes([0.040, 0.185, 0.445, 0.260])
     draw_card_background(ax_card3, "Müşteri Segmentlerine Göre Müşteri Kaybı Oranı")
 
     # Kart 4 Arka Planı (Sağ Alt)
-    ax_card4 = fig.add_axes([0.515, 0.165, 0.445, 0.260])
+    ax_card4 = fig.add_axes([0.515, 0.185, 0.445, 0.260])
     draw_card_background(ax_card4, "Müşteri Edinme Kanalına Göre Müşteri Kaybı Oranı")
 
     # --- GRAFİK 1: Genel Abonelik Durumu Dağılımı (Donut) ---
-    ax_g1 = fig.add_axes([0.050, 0.460, 0.425, 0.205])
+    ax_g1 = fig.add_axes([0.050, 0.475, 0.425, 0.200])
     render_chart_1_donut(ax_g1, metrics)
 
     # --- GRAFİK 2: Abonelik Planlarına Göre Müşteri Kaybı Oranı (Yatay Çubuk) ---
-    ax_g2 = fig.add_axes([0.640, 0.485, 0.295, 0.180])
+    ax_g2 = fig.add_axes([0.640, 0.495, 0.295, 0.180])
     render_chart_2_plans(ax_g2, metrics)
 
     # --- GRAFİK 3: Müşteri Segmentlerine Göre Müşteri Kaybı Oranı (Yatay Çubuk) ---
-    ax_g3 = fig.add_axes([0.225, 0.195, 0.240, 0.175])
+    ax_g3 = fig.add_axes([0.225, 0.215, 0.240, 0.175])
     render_chart_3_segments(ax_g3, metrics)
 
     # --- GRAFİK 4: Müşteri Edinme Kanalına Göre Müşteri Kaybı Oranı (Yatay Çubuk) ---
-    ax_g4 = fig.add_axes([0.705, 0.195, 0.230, 0.175])
+    ax_g4 = fig.add_axes([0.705, 0.215, 0.230, 0.175])
     render_chart_4_channels(ax_g4, metrics)
 
     # -------------------------------------------------------------------------
     # 4. BÖLÜM: ALT ALAN (VERİ KALİTESİ, ANALİTİK SINIRLILIKLAR VE KAYNAKÇA)
+    # Baskı okunabilirliği için alan ve font optimize edildi: Y = 0.018 to 0.168 (Yükseklik: 0.150)
     # -------------------------------------------------------------------------
-    ax_footer = fig.add_axes([0.040, 0.015, 0.920, 0.138])
+    ax_footer = fig.add_axes([0.040, 0.018, 0.920, 0.148])
     render_footer_section(ax_footer, metrics)
 
     return fig
@@ -487,7 +564,7 @@ def draw_card_background(ax: plt.Axes, title: str) -> None:
 
 
 # -----------------------------------------------------------------------------
-# GRAFİK ÇİZİM YARDIMCILARI
+# GRAFİK ÇİZİM YARDIMCILARI (TÜRKÇE ETİKETLER)
 # -----------------------------------------------------------------------------
 def render_chart_1_donut(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     """
@@ -574,7 +651,7 @@ def render_chart_1_donut(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
 def render_chart_2_plans(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     """
     Grafik 2: Abonelik Planlarına Göre Müşteri Kaybı Oranı (Yatay Çubuk Grafik)
-    Sıralama: Enterprise (%25.00) -> Growth (%20.63) -> Starter (%20.31) -> Scale (%19.12)
+    Türkçe Kategoriler: Kurumsal (%25.00) -> Büyüme (%20.63) -> Başlangıç (%20.31) -> Ölçek (%19.12)
     """
     ax.set_facecolor("#FFFFFF")
     for spine in ["top", "right"]:
@@ -584,13 +661,13 @@ def render_chart_2_plans(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
         ax.spines[spine].set_linewidth(0.8)
 
     plan_data = []
-    for p_name, vals in metrics["plan_analysis"].items():
+    for tr_name, vals in metrics["plan_analysis"].items():
         plan_data.append({
-            "name": p_name,
+            "name": tr_name,
             "rate": vals["churn_rate_pct"],
             "total": vals["total"],
             "churned": vals["churned"],
-            "label": f"{p_name} (n={vals['total']:,})".replace(",", "."),
+            "label": f"{tr_name} (n={vals['total']:,})".replace(",", "."),
         })
 
     plan_data.sort(key=lambda x: x["rate"], reverse=False)
@@ -645,7 +722,7 @@ def render_chart_2_plans(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
 def render_chart_3_segments(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     """
     Grafik 3: Müşteri Segmentlerine Göre Müşteri Kaybı Oranı (Yatay Çubuk Grafik)
-    Sıralama: SMB (%21.54) -> Enterprise (%21.49) -> Orta Ölçekli Pazar (%17.16)
+    Türkçe Kategoriler: KOBİ (%21.54) -> Kurumsal (%21.49) -> Orta Ölçekli Pazar (%17.16)
     """
     ax.set_facecolor("#FFFFFF")
     for spine in ["top", "right"]:
@@ -655,18 +732,13 @@ def render_chart_3_segments(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
         ax.spines[spine].set_linewidth(0.8)
 
     seg_data = []
-    for s_name, vals in metrics["segment_analysis"].items():
-        if "Mid-market" in s_name:
-            label_name = f"Orta Ölçekli Pazar (Mid-market)\n(n={vals['total']:,})".replace(",", ".")
-        else:
-            label_name = f"{s_name} (n={vals['total']:,})".replace(",", ".")
-
+    for tr_name, vals in metrics["segment_analysis"].items():
         seg_data.append({
-            "name": s_name,
+            "name": tr_name,
             "rate": vals["churn_rate_pct"],
             "total": vals["total"],
             "churned": vals["churned"],
-            "label": label_name,
+            "label": f"{tr_name} (n={vals['total']:,})".replace(",", "."),
         })
 
     seg_data.sort(key=lambda x: x["rate"], reverse=False)
@@ -708,7 +780,7 @@ def render_chart_3_segments(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     )
 
     ax.set_yticks(y_pos)
-    ax.set_yticklabels(labels, fontsize=7.4, fontweight="bold", color="#1E293B")
+    ax.set_yticklabels(labels, fontsize=7.8, fontweight="bold", color="#1E293B")
     ax.set_xlim(0, 31)
     ax.set_ylim(-0.6, 3.0)
     ax.set_xlabel("Müşteri Kaybı Oranı (%)", fontsize=7.5, fontweight="bold", color="#475569", labelpad=2)
@@ -719,8 +791,8 @@ def render_chart_3_segments(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
 def render_chart_4_channels(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     """
     Grafik 4: Müşteri Edinme Kanalına Göre Müşteri Kaybı Oranı (Yatay Çubuk Grafik)
-    Sıralama: Organik (%22.60) -> Giden Pazarlama (%22.37) -> Ücretli Arama (%21.29)
-              -> Tavsiye (%18.48) -> İş Ortağı (%18.00)
+    Türkçe Kategoriler: Organik (%22.60) -> Giden Pazarlama (%22.37) -> Ücretli Arama (%21.29)
+                        -> Tavsiye (%18.48) -> İş Ortağı (%18.00)
     """
     ax.set_facecolor("#FFFFFF")
     for spine in ["top", "right"]:
@@ -730,18 +802,13 @@ def render_chart_4_channels(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
         ax.spines[spine].set_linewidth(0.8)
 
     ch_data = []
-    for c_name, vals in metrics["channel_analysis"].items():
-        if "Outbound" in c_name:
-            label_name = f"Giden Pazarlama (Outbound)\n(n={vals['total']:,})".replace(",", ".")
-        else:
-            label_name = f"{c_name} (n={vals['total']:,})".replace(",", ".")
-
+    for tr_name, vals in metrics["channel_analysis"].items():
         ch_data.append({
-            "name": c_name,
+            "name": tr_name,
             "rate": vals["churn_rate_pct"],
             "total": vals["total"],
             "churned": vals["churned"],
-            "label": label_name,
+            "label": f"{tr_name} (n={vals['total']:,})".replace(",", "."),
         })
 
     ch_data.sort(key=lambda x: x["rate"], reverse=False)
@@ -783,7 +850,7 @@ def render_chart_4_channels(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     )
 
     ax.set_yticks(y_pos)
-    ax.set_yticklabels(labels, fontsize=7.4, fontweight="bold", color="#1E293B")
+    ax.set_yticklabels(labels, fontsize=7.8, fontweight="bold", color="#1E293B")
     ax.set_xlim(0, 31)
     ax.set_ylim(-0.6, 5.0)
     ax.set_xlabel("Müşteri Kaybı Oranı (%)", fontsize=7.5, fontweight="bold", color="#475569", labelpad=2)
@@ -794,6 +861,8 @@ def render_chart_4_channels(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
 def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     """
     Alt Bölüm: Veri Kalitesi, Analitik Sınırlılıklar ve Kaynakça
+    Baskı okunabilirliği için punto boyutu 7.6–8.5 pt olarak büyütülmüştür.
+    Metinler kutu sınırlarına kusursuz uyum sağlayacak şekilde satırlandırılmıştır.
     """
     ax.axis("off")
 
@@ -824,9 +893,9 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     ax.add_patch(accent_left)
 
     ax.text(
-        0.018, 0.92,
+        0.018, 0.93,
         "VERİ KALİTESİ VE ANALİTİK SINIRLILIKLAR",
-        fontsize=8.2,
+        fontsize=8.5,
         fontweight="bold",
         color="#9F1239",
         va="top",
@@ -835,21 +904,22 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     )
 
     limitations_text = (
-        "1. Coğrafi bölge bilgisi 2.000 gözlemin 479 tanesinde eksiktir (%23,95). Bu değerler rastgele doldurulmamış, eksik olarak korunmuştur.\n"
+        "1. Coğrafi bölge bilgisi 2.000 gözlemin 479 tanesinde eksiktir (%23,95). Bu değerler rastgele\n"
+        "   doldurulmamış, eksik veri olarak korunmuştur.\n"
         "2. Fatura geçmişi yalnızca 2.000 aboneliğin 120 tanesinde mevcuttur (%6,00).\n"
         "3. Ödeme geçmişi 2.000 aboneliğin 118 tanesinde mevcuttur (%5,90).\n\n"
-        "Önemli Metodolojik Uyarı: Özellikle fatura ve ödeme verilerine dayanan bulgular yalnızca sınırlı bir alt grubu (%6)\n"
-        "temsil etmekte olup tüm müşteri popülasyonuna genellenemez. Verinin doğrudan desteklemediği neden-sonuç\n"
-        "ilişkileri kurulmamalıdır."
+        "Önemli Metodolojik Uyarı: Özellikle fatura ve ödeme verilerine dayanan bulgular yalnızca\n"
+        "sınırlı bir alt kohortu (%6) temsil etmekte olup tüm müşteri popülasyonuna genellenemez.\n"
+        "Verinin doğrudan desteklemediği neden-sonuç (nedensellik) çıkarımları kurulmamalıdır."
     )
     ax.text(
-        0.018, 0.73,
+        0.018, 0.77,
         limitations_text,
-        fontsize=6.7,
+        fontsize=7.6,
         color="#334155",
         va="top",
         ha="left",
-        linespacing=1.24,
+        linespacing=1.22,
         transform=ax.transAxes,
     )
 
@@ -880,9 +950,9 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     ax.add_patch(accent_right)
 
     ax.text(
-        0.652, 0.92,
+        0.652, 0.93,
         "KAYNAK GÖSTERİMİ VE AKADEMİK BİLDİRİM",
-        fontsize=8.2,
+        fontsize=8.5,
         fontweight="bold",
         color="#1E3A8A",
         va="top",
@@ -891,21 +961,22 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     )
 
     provenance_text = (
-        f"Veri Seti: {DATA_SOURCE_NAME}\n"
+        f"Veri Seti: Analytics Engineering\n"
+        f"\"SaaS Subscriptions & Customer Churn Dataset v1.0.0\"\n"
         f"Bağlantı: {DATA_SOURCE_URL}\n"
         f"Lisans: {DATA_LICENSE}\n\n"
-        f"Veri Kapsamı Beyanı: 2023–2025 veri kapsamı kaynak tarafından\n"
-        f"beyan edilmiş olup, bağımsız olarak doğrulanmamıştır.\n"
-        f"Hazırlayan: {STUDENT_NAME}  |  Öğrenci No: {STUDENT_ID}"
+        f"Veri Kapsamı Beyanı: 2023–2025 veri kapsamı kaynak beyanıdır,\n"
+        f"bağımsız olarak doğrulanmamıştır.\n"
+        f"Öğrenci: {STUDENT_NAME}  |  Öğrenci No: {STUDENT_ID}"
     )
     ax.text(
-        0.652, 0.73,
+        0.652, 0.77,
         provenance_text,
-        fontsize=6.6,
+        fontsize=7.5,
         color="#334155",
         va="top",
         ha="left",
-        linespacing=1.21,
+        linespacing=1.22,
         transform=ax.transAxes,
     )
 
@@ -916,12 +987,12 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
 def build_vize_dashboard() -> Tuple[Path, Path, Path]:
     """
     Tüm dashboard üretim sürecini koordine eder:
-    Veriyi yükler, doğrular, grafikleri çizer ve çıktı dosyalarını kaydeder.
+    Veriyi yükler, EDA JSON ile çapraz doğrular, grafikleri çizer ve çıktıları kaydeder.
     """
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 1. Veri yükleme ve doğrulama
-    df, metrics = load_and_validate_data(DATASET_PATH)
+    # 1. Veri yükleme ve çok katmanlı doğrulama
+    df, metrics = load_and_validate_data(DATASET_PATH, EDA_METRICS_PATH)
 
     # 2. JSON metrik raporunu kaydet
     logger.info("Doğrulanmış metrikler JSON formatında kaydediliyor: %s", OUTPUT_JSON_PATH)

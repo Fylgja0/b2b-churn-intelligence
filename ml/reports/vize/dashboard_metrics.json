@@ -1,0 +1,104 @@
+{
+  "validation_status": "SUCCESS",
+  "student_info": {
+    "name": "Ahmetcan Bağlı",
+    "student_id": "Belirtilmedi",
+    "course": "Uygulamalı Veri Analizi Dersi - Vize Çalışması"
+  },
+  "data_provenance": {
+    "source": "Analytics Engineering, 'SaaS Subscriptions & Customer Churn Dataset v1.0.0'",
+    "url": "https://www.analyticsengineering.com/datasets/saas-subscriptions",
+    "license": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
+    "declared_period": "01.01.2023 – 31.12.2025",
+    "total_records": 2000
+  },
+  "overall_kpis": {
+    "total_subscriptions": 2000,
+    "active_subscriptions": 1590,
+    "active_pct": 79.5,
+    "churned_subscriptions": 410,
+    "churn_pct": 20.5
+  },
+  "plan_analysis": {
+    "Enterprise": {
+      "total": 104,
+      "churned": 26,
+      "churn_rate_pct": 25.0
+    },
+    "Growth": {
+      "total": 669,
+      "churned": 138,
+      "churn_rate_pct": 20.63
+    },
+    "Scale": {
+      "total": 272,
+      "churned": 52,
+      "churn_rate_pct": 19.12
+    },
+    "Starter": {
+      "total": 955,
+      "churned": 194,
+      "churn_rate_pct": 20.31
+    }
+  },
+  "segment_analysis": {
+    "SMB": {
+      "raw_key": "SMB",
+      "total": 1407,
+      "churned": 303,
+      "churn_rate_pct": 21.54
+    },
+    "Enterprise": {
+      "raw_key": "enterprise",
+      "total": 121,
+      "churned": 26,
+      "churn_rate_pct": 21.49
+    },
+    "Orta Ölçekli Pazar (Mid-market)": {
+      "raw_key": "mid_market",
+      "total": 472,
+      "churned": 81,
+      "churn_rate_pct": 17.16
+    }
+  },
+  "channel_analysis": {
+    "Organik": {
+      "raw_key": "organic",
+      "total": 385,
+      "churned": 87,
+      "churn_rate_pct": 22.6
+    },
+    "Giden Pazarlama (Outbound)": {
+      "raw_key": "outbound",
+      "total": 389,
+      "churned": 87,
+      "churn_rate_pct": 22.37
+    },
+    "Ücretli Arama": {
+      "raw_key": "paid_search",
+      "total": 404,
+      "churned": 86,
+      "churn_rate_pct": 21.29
+    },
+    "İş Ortağı": {
+      "raw_key": "partner",
+      "total": 400,
+      "churned": 72,
+      "churn_rate_pct": 18.0
+    },
+    "Tavsiye": {
+      "raw_key": "referral",
+      "total": 422,
+      "churned": 78,
+      "churn_rate_pct": 18.48
+    }
+  },
+  "data_quality_limitations": {
+    "missing_region_count": 479,
+    "missing_region_pct": 23.95,
+    "billing_data_coverage_count": 120,
+    "billing_data_coverage_pct": 6.0,
+    "payment_data_coverage_count": 118,
+    "payment_data_coverage_pct": 5.9
+  }
+}

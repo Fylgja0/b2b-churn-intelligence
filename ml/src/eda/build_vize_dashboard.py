@@ -786,23 +786,24 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     p_plan_s = f"{chi_plan_p:.2f}".replace(".", ",")
     p_seg_s = f"{chi_seg_p:.2f}".replace(".", ",")
     p_ch_s = f"{chi_ch_p:.2f}".replace(".", ",")
+    p_fisher_s = f"{metrics['chi_square_tests']['enterprise_vs_others_fisher']['p_value']:.2f}".replace(".", ",")
 
     attention_text = (
-        f"• İstatistiksel Anlamlılık: Plan (p = {p_plan_s}), segment (p = {p_seg_s}) ve edinme\n"
-        f"  kanalı (p = {p_ch_s}) kayıp oranı farkları istatistiksel olarak anlamlı değildir\n"
-        f"  (Ki-kare p > 0,05); bu farklar kesin sonuç olarak yorumlanmamalıdır.\n"
+        f"• İstatistiksel Anlamlılık: Plan (p = {p_plan_s}), segment (p = {p_seg_s}) ve kanal (p = {p_ch_s})\n"
+        f"  kayıp farkları anlamlı değildir (Ki-kare p > 0,05); kesin sonuç olarak yorumlanmamalıdır.\n"
         f"• Gözlem Süresi ve Sansürleme: Süre ve kohort karşılaştırmaları, yeni abonelerin\n"
-        f"  gözlem süresinin kısa olması nedeniyle yanlı olabilir; bu yüzden elde tutma\n"
-        f"  (Kaplan-Meier) eğrisi kullanılmıştır."
+        f"  gözlem süresinin kısa olması nedeniyle yanlı olabilir; bu yüzden elde tutma eğrisi\n"
+        f"  (Kaplan-Meier) kullanılmıştır.\n"
+        f"• Enterprise ve diğer planlar karşılaştırması (Fisher kesin test): p = {p_fisher_s}; fark anlamlı değil."
     )
     ax.text(
-        0.014, 0.74,
+        0.014, 0.76,
         attention_text,
         fontsize=8.0,
         color="#1E293B",
         va="top",
         ha="left",
-        linespacing=1.18,
+        linespacing=1.15,
         transform=ax.transAxes,
     )
 

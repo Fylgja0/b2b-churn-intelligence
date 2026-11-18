@@ -658,10 +658,10 @@ def render_chart_1_donut(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     )
 
     # Donut ortası:
-    # 2.000 merkezin üst kısmında (y=0.16)
-    # Toplam Abonelik sayının altında (y=-0.16) belirgin ve dengeli dikey boşlukla
+    # 2.000 merkezin üst kısmında (y=0.19)
+    # Toplam Abonelik sayının altında (y=-0.20) belirgin ve dengeli dikey boşlukla
     ax.text(
-        -0.30, 0.16,
+        -0.30, 0.19,
         f"{total_cnt:,}".replace(",", "."),
         ha="center",
         va="center",
@@ -670,14 +670,14 @@ def render_chart_1_donut(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
         color="#0F172A",
     )
     ax.text(
-        -0.30, -0.16,
+        -0.30, -0.20,
         "Toplam\nAbonelik",
         ha="center",
         va="center",
         fontsize=6.8,
         fontweight="bold",
         color="#64748B",
-        linespacing=1.10,
+        linespacing=1.02,
     )
 
     # Sağ taraf bilgi kartları
@@ -789,7 +789,7 @@ def render_chart_2_plans(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     rates = [d["rate"] for d in plan_data]
     labels = [d["label"] for d in plan_data]
 
-    bars = ax.barh(y_pos, rates, height=0.52, color="#3B82F6", edgecolor="none", zorder=3)
+    bars = ax.barh(y_pos, rates, height=0.52, color="#1D4ED8", edgecolor="none", zorder=3)
 
     # Genel Ortalama Referans Çizgisi (%20,50) - Çizgi temiz, üzerinde metin bulunmaz
     baseline = metrics["overall_kpis"]["churn_pct"]
@@ -841,7 +841,7 @@ def render_chart_3_segments(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     rates = [d["rate"] for d in seg_data]
     labels = [d["label"] for d in seg_data]
 
-    bars = ax.barh(y_pos, rates, height=0.48, color="#8B5CF6", edgecolor="none", zorder=3)
+    bars = ax.barh(y_pos, rates, height=0.48, color="#6D28D9", edgecolor="none", zorder=3)
 
     baseline = metrics["overall_kpis"]["churn_pct"]
     ax.axvline(
@@ -893,7 +893,7 @@ def render_chart_4_channels(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     rates = [d["rate"] for d in ch_data]
     labels = [d["label"] for d in ch_data]
 
-    bars = ax.barh(y_pos, rates, height=0.52, color="#0EA5E9", edgecolor="none", zorder=3)
+    bars = ax.barh(y_pos, rates, height=0.52, color="#0369A1", edgecolor="none", zorder=3)
 
     baseline = metrics["overall_kpis"]["churn_pct"]
     ax.axvline(
@@ -904,7 +904,7 @@ def render_chart_4_channels(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
         zorder=4,
     )
 
-    render_dynamic_bar_labels(ax, ch_data, dark_color="#0369A1", baseline=baseline)
+    render_dynamic_bar_labels(ax, ch_data, dark_color="#0C4A6E", baseline=baseline)
 
     ax.set_yticks(y_pos)
     ax.set_yticklabels(labels, fontsize=7.8, fontweight="bold", color="#1E293B")
@@ -962,8 +962,8 @@ def render_footer_section(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     )
 
     limitations_text = (
-        "1. Coğrafi Bölge Eksikliği: 2.000 gözlemin 479 tanesinde (%23,95) eksiktir. Rastgele doldurulmamış,\n"
-        "   tarafsızlığı korumak amacıyla eksik veri olarak tutulmuştur.\n"
+        "1. Coğrafi Bölge Eksikliği: 2.000 gözlemin 479 tanesinde (%23,95) eksiktir. Eksik bölge bilgileri yapay biçimde tamamlanmamış,\n"
+        "   veri setindeki haliyle eksik olarak korunmuştur.\n"
         "2. Fatura & Ödeme Kapsamı: Fatura geçmişi 120 (%6,00), ödeme geçmişi 118 (%5,90) kayıtta mevcuttur.\n"
         "3. Metodolojik Uyarı: Fatura ve ödeme bulguları yalnızca sınırlı bir alt kohortu (%6) temsil eder;\n"
         "   tüm popülasyona genellenemez. Verinin doğrudan desteklemediği nedensellik çıkarımları kurulmamalıdır."
@@ -1065,31 +1065,132 @@ def build_vize_dashboard() -> Tuple[Path, Path, Path]:
     canvas = FigureCanvasAgg(fig)
     canvas.draw()
     renderer = canvas.get_renderer()
+    canvas_w, canvas_h = canvas.get_width_height()
 
     tol_px = 3.0  # piksel toleransı
 
-    def check_artist_within(artist, container_bbox, desc: str) -> None:
+    def check_artist_within(artist, container_bbox, desc: str, tol: float = tol_px) -> None:
         bb = artist.get_window_extent(renderer)
         if bb.width == 0 or bb.height == 0:
             return
-        if bb.x0 < container_bbox.x0 - tol_px:
+        if bb.x0 < container_bbox.x0 - tol:
             raise ValueError(
-                f"Görsel sınır aşımı: {desc} kartın solundan taştı! (x0={bb.x0:.1f}, min={container_bbox.x0:.1f})"
+                f"Görsel sınır aşımı: {desc} alanın solundan taştı! (x0={bb.x0:.1f}, min={container_bbox.x0:.1f})"
             )
-        if bb.x1 > container_bbox.x1 + tol_px:
+        if bb.x1 > container_bbox.x1 + tol:
             raise ValueError(
-                f"Görsel sınır aşımı: {desc} kartın sağından taştı! (x1={bb.x1:.1f}, max={container_bbox.x1:.1f})"
+                f"Görsel sınır aşımı: {desc} alanın sağından taştı! (x1={bb.x1:.1f}, max={container_bbox.x1:.1f})"
             )
-        if bb.y0 < container_bbox.y0 - tol_px:
+        if bb.y0 < container_bbox.y0 - tol:
             raise ValueError(
-                f"Görsel sınır aşımı: {desc} kartın altından taştı! (y0={bb.y0:.1f}, min={container_bbox.y0:.1f})"
+                f"Görsel sınır aşımı: {desc} alanın altından taştı! (y0={bb.y0:.1f}, min={container_bbox.y0:.1f})"
             )
-        if bb.y1 > container_bbox.y1 + tol_px:
+        if bb.y1 > container_bbox.y1 + tol:
             raise ValueError(
-                f"Görsel sınır aşımı: {desc} kartın üstünden taştı! (y1={bb.y1:.1f}, max={container_bbox.y1:.1f})"
+                f"Görsel sınır aşımı: {desc} alanın üstünden taştı! (y1={bb.y1:.1f}, max={container_bbox.y1:.1f})"
             )
 
     axes_dict = getattr(fig, "_dashboard_axes", {})
+
+    # A) HEADER DOĞRULAMASI (Tüm başlık, alt başlık ve künye metinleri)
+    ax_header = axes_dict.get("header")
+    if ax_header is not None:
+        h_bb = ax_header.get_window_extent(renderer)
+        header_names = [
+            "Proje Ana Başlığı",
+            "Alt Başlık",
+            "Tarih/Kapsam Açıklaması",
+            "Akademik/Öğrenci Bilgi Künyesi",
+        ]
+        for idx, t in enumerate(ax_header.texts):
+            name = header_names[idx] if idx < len(header_names) else f"Header Metni {idx}"
+            check_artist_within(t, h_bb, f"Header - {name} ('{t.get_text()[:25]}')")
+            t_bb = t.get_window_extent(renderer)
+            if t_bb.x0 < 0 or t_bb.x1 > canvas_w or t_bb.y0 < 0 or t_bb.y1 > canvas_h:
+                raise ValueError(f"Header metni sayfa sınırları dışına taştı: '{t.get_text()[:25]}'")
+
+    # B) 4 ADET KPI KARTININ BAĞIMSIZ VE ÇAPRAZ ÇAKIŞMA DOĞRULAMASI
+    ax_kpi = axes_dict.get("kpi")
+    if ax_kpi is not None:
+        kpi_names = [
+            "Toplam Abonelik Kartı",
+            "Aktif Abonelik Kartı",
+            "İptal Edilmiş Abonelik Kartı",
+            "Genel Müşteri Kaybı Oranı Kartı",
+        ]
+        card_bboxes = []
+        for idx in range(4):
+            card_patch = ax_kpi.patches[idx * 2]  # FancyBboxPatch arka planı
+            c_bb = card_patch.get_window_extent(renderer)
+            card_bboxes.append(c_bb)
+            kpi_name = kpi_names[idx]
+
+            t_title = ax_kpi.texts[idx * 3]
+            t_val = ax_kpi.texts[idx * 3 + 1]
+            t_sub = ax_kpi.texts[idx * 3 + 2]
+
+            check_artist_within(t_title, c_bb, f"KPI {kpi_name} - Başlık '{t_title.get_text()}'")
+            check_artist_within(t_val, c_bb, f"KPI {kpi_name} - Değer '{t_val.get_text()}'")
+            check_artist_within(t_sub, c_bb, f"KPI {kpi_name} - Alt Açıklama '{t_sub.get_text()}'")
+
+            # Metinlerin komşu kartların alanına taşmadığını doğrula
+            for other_idx in range(4):
+                if other_idx != idx:
+                    other_patch = ax_kpi.patches[other_idx * 2]
+                    other_bb = other_patch.get_window_extent(renderer)
+                    for t_elem in (t_title, t_val, t_sub):
+                        t_bb = t_elem.get_window_extent(renderer)
+                        # Komşu karta girme denetimi (AABB çakışma kontrolü)
+                        if (
+                            t_bb.x0 < other_bb.x1
+                            and t_bb.x1 > other_bb.x0
+                            and t_bb.y0 < other_bb.y1
+                            and t_bb.y1 > other_bb.y0
+                        ):
+                            raise ValueError(
+                                f"KPI kartları arası çakışma: {kpi_name} metni '{t_elem.get_text()}' "
+                                f"{kpi_names[other_idx]} sınırları içerisine taştı!"
+                            )
+
+    # C) FOOTER PANELLERİNİN BAĞIMSIZ VE ÇAPRAZ ÇAKIŞMA DOĞRULAMASI
+    ax_footer = axes_dict.get("footer")
+    if ax_footer is not None:
+        panel_left_patch = ax_footer.patches[0]
+        panel_right_patch = ax_footer.patches[2]
+        p_left_bb = panel_left_patch.get_window_extent(renderer)
+        p_right_bb = panel_right_patch.get_window_extent(renderer)
+
+        # Sol panel metinleri (Başlık ve Açıklamalar)
+        t_l_title = ax_footer.texts[0]
+        t_l_body = ax_footer.texts[1]
+        check_artist_within(t_l_title, p_left_bb, f"Footer Sol Panel - Başlık '{t_l_title.get_text()}'")
+        check_artist_within(t_l_body, p_left_bb, f"Footer Sol Panel - Gövde Metni")
+
+        # Sol panel metinlerinin sağ panele taşmadığını teyit et
+        for t_l in (t_l_title, t_l_body):
+            tl_bb = t_l.get_window_extent(renderer)
+            if tl_bb.x1 > p_right_bb.x0:
+                raise ValueError(
+                    f"Footer paneller arası taşma: Sol panel metni '{t_l.get_text()[:25]}' "
+                    f"Sağ panel sınırına (x={p_right_bb.x0:.1f}) taştı! (x1={tl_bb.x1:.1f})"
+                )
+
+        # Sağ panel metinleri (Başlık ve Kaynakça/Akademik Künye)
+        t_r_title = ax_footer.texts[2]
+        t_r_body = ax_footer.texts[3]
+        check_artist_within(t_r_title, p_right_bb, f"Footer Sağ Panel - Başlık '{t_r_title.get_text()}'")
+        check_artist_within(t_r_body, p_right_bb, f"Footer Sağ Panel - Gövde Metni")
+
+        # Sağ panel metinlerinin sol panele taşmadığını teyit et
+        for t_r in (t_r_title, t_r_body):
+            tr_bb = t_r.get_window_extent(renderer)
+            if tr_bb.x0 < p_left_bb.x1:
+                raise ValueError(
+                    f"Footer paneller arası taşma: Sağ panel metni '{t_r.get_text()[:25]}' "
+                    f"Sol panel sınırına (x={p_left_bb.x1:.1f}) taştı! (x0={tr_bb.x0:.1f})"
+                )
+
+    # D) 4 GRAFİK KARTI VE ELEMANLARININ DOĞRULAMASI
     card_pairs = [
         (axes_dict.get("card1"), axes_dict.get("g1"), "Grafik 1 (Donut)"),
         (axes_dict.get("card2"), axes_dict.get("g2"), "Grafik 2 (Planlar)"),
@@ -1114,7 +1215,7 @@ def build_vize_dashboard() -> Tuple[Path, Path, Path]:
         for t in ax_p.texts:
             check_artist_within(t, c_bb, f"{name} - Sayısal Etiket '{t.get_text()}'")
 
-    # Kesikli referans çizgisinin (%20,50) hiçbir veri etiketiyle kesişmediğini piksel düzeyinde doğrula
+    # E) KESİKLİ REFERANS ÇİZGİSİNİN (%20,50) PİKSEL DÜZEYİNDE ÇAKIŞMASIZLIK DOĞRULAMASI
     baseline_val = metrics["overall_kpis"]["churn_pct"]
     for ax_key, name in [("g2", "Planlar"), ("g3", "Segmentler"), ("g4", "Kanallar")]:
         ax_p = axes_dict.get(ax_key)
@@ -1129,14 +1230,10 @@ def build_vize_dashboard() -> Tuple[Path, Path, Path]:
                     f"etiketi referans çizgisiyle kesişiyor! (x_line={x_line_px:.1f}, text_x=[{t_bb.x0:.1f}, {t_bb.x1:.1f}])"
                 )
 
-    # Footer metinlerinin alt/sağ sınır taşma denetimi
-    ax_footer = axes_dict.get("footer")
-    if ax_footer is not None:
-        f_bb = ax_footer.get_window_extent(renderer)
-        for t in ax_footer.texts:
-            check_artist_within(t, f_bb, f"Footer Metni '{t.get_text()[:25]}'")
-
-    logger.info("Otomatik görsel yerleşim, metin sınırı ve referans çizgisi çakışmasızlık doğrulaması başarıyla geçti.")
+    logger.info(
+        "Otomatik görsel yerleşim (Header, KPI Kartları, Footer Panelleri, Grafikler) ve "
+        "referans çizgisi çakışmasızlık doğrulaması başarıyla tamamlandı."
+    )
 
     # 5. PDF ve PNG olarak kaydet
     logger.info("PDF kaydediliyor (300 DPI, yüksek kaliteli baskı): %s", OUTPUT_PDF_PATH)

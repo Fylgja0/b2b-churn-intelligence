@@ -42,7 +42,7 @@ from scipy.stats import chi2_contingency
 STUDENT_NAME = "Ahmetcan Bağlı"
 STUDENT_ID = "2516016010"
 COURSE_TITLE = "Uygulamalı Veri Analizi Dersi - Vize Çalışması"
-PROJECT_TITLE = "B2B Müşteri Terk (Churn) ve Müdahale Öneri Platformu – Churn Intelligence SaaS"
+PROJECT_TITLE = "SaaS Abonelik Müşteri Kaybı: Keşifsel Veri Analizi"
 DATA_SOURCE_NAME = "Analytics Engineering, 'SaaS Subscriptions & Customer Churn Dataset v1.0.0'"
 DATA_SOURCE_URL = "https://www.analyticsengineering.com/datasets/saas-subscriptions"
 DATA_LICENSE = "Creative Commons Attribution 4.0 International (CC BY 4.0)"
@@ -503,11 +503,11 @@ def render_chart_1_km_survival(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     ax.step(days, surv, where="post", color=COLOR_ACTIVE, linewidth=2.3, zorder=4, label="Kaplan-Meier Elde Tutma (%)")
     ax.fill_between(days, 0, surv, step="post", color=COLOR_ACTIVE, alpha=0.10, zorder=2)
 
-    # 180, 365 ve 540. gün işaretçileri ve değer etiketleri
+    # 180, 365 ve 540. gün işaretçileri ve değer etiketleri (farklı yükseklik ve sütunlarda, çakışmasız)
     mark_configs = [
-        (180, milestones["day_180_pct"], (180, 58), "180. Gün\n%{val}"),
-        (365, milestones["day_365_pct"], (365, 48), "365. Gün (12. Ay)\n%{val}"),
-        (540, milestones["day_540_pct"], (540, 38), "540. Gün (18. Ay)\n%{val}"),
+        (180, milestones["day_180_pct"], (115, 66), "180. Gün\n%{val}"),
+        (365, milestones["day_365_pct"], (285, 48), "365. Gün\n%{val}"),
+        (540, milestones["day_540_pct"], (465, 30), "540. Gün\n%{val}"),
     ]
 
     for day_x, val_y, text_xy, tpl in mark_configs:
@@ -517,19 +517,19 @@ def render_chart_1_km_survival(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
         # Dikey kesikli kılavuz çizgisi
         ax.plot([day_x, day_x], [0, val_y], color="#64748B", linestyle="--", linewidth=0.9, zorder=3)
         # İşaret noktası
-        ax.scatter([day_x], [val_y], color="#0F172A", s=32, zorder=6, edgecolors="#FFFFFF", linewidth=1.2)
+        ax.scatter([day_x], [val_y], color="#0F172A", s=30, zorder=6, edgecolors="#FFFFFF", linewidth=1.2)
 
-        # Ok ve kutulu etiket (min 8.0 pt)
+        # Ok ve kutulu etiket (çizgi ve diğer kutularla kesişmeyecek konumda)
         ax.annotate(
             label_str,
             xy=(day_x, val_y),
             xytext=text_xy,
             ha="center",
             va="top",
-            fontsize=8.0,
+            fontsize=7.6,
             fontweight="bold",
             color="#0F172A",
-            bbox=dict(boxstyle="round,pad=0.25", facecolor="#F0FDF4", edgecolor="#86EFAC", linewidth=0.9),
+            bbox=dict(boxstyle="round,pad=0.22", facecolor="#F0FDF4", edgecolor="#86EFAC", linewidth=0.9),
             arrowprops=dict(arrowstyle="->", color="#15803D", lw=1.0, shrinkA=0, shrinkB=3),
             zorder=7,
         )
@@ -548,8 +548,8 @@ def render_chart_1_km_survival(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
 def render_chart_2_mrr_by_plan(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     """
     Grafik 1B (Sağ Üst): Plan Bazında Gelir (MRR) Payı ve Kaybedilen MRR Payı (%).
-    Starter/Growth/Scale/Enterprise için iki gruplu çubuk grafik:
-      - Toplam MRR Payı (%): Plan Mavisi (#1D4ED8)
+    Enterprise, Scale, Growth, Starter sırasıyla iki gruplu çubuk grafik:
+      - Toplam MRR Payı (%): Nötr Gri (#64748B)
       - Kaybedilen MRR Payı (%): Kayıp Kırmızısı (#DC2626)
     """
     ax.set_facecolor("#FFFFFF")
@@ -559,7 +559,7 @@ def render_chart_2_mrr_by_plan(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
         ax.spines[spine].set_color("#94A3B8")
         ax.spines[spine].set_linewidth(0.9)
 
-    raw_order = ["Starter", "Growth", "Scale", "Enterprise"]
+    raw_order = ["Enterprise", "Scale", "Growth", "Starter"]
     mrr_plan_map = {v["raw_key"]: v for v in metrics["mrr_by_plan"].values()}
 
     x_pos = np.arange(len(raw_order))
@@ -574,7 +574,7 @@ def render_chart_2_mrr_by_plan(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
         x_pos - offset,
         tot_shares,
         width=width,
-        color=COLOR_PLAN,
+        color="#64748B",
         edgecolor="none",
         label="Toplam MRR Payı (%)",
         zorder=3,
@@ -599,7 +599,7 @@ def render_chart_2_mrr_by_plan(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
             va="bottom",
             fontsize=8.0,
             fontweight="bold",
-            color=COLOR_PLAN_DARK,
+            color="#334155",
             zorder=5,
         )
 
@@ -624,7 +624,7 @@ def render_chart_2_mrr_by_plan(ax: plt.Axes, metrics: Dict[str, Any]) -> None:
     ax.tick_params(axis="y", labelsize=8.0, colors="#1E293B")
     ax.set_ylabel("MRR Payı (%)", fontsize=8.2, fontweight="bold", color="#1E293B", labelpad=3)
     ax.legend(
-        loc="upper left",
+        loc="upper right",
         frameon=True,
         facecolor="#F8FAFC",
         edgecolor="#CBD5E1",
@@ -639,41 +639,24 @@ def render_dynamic_bar_labels(
 ) -> None:
     """
     Yatay çubuk grafikler için dinamik etiket konumlandırması (min 8.0 pt).
-    Referans çizgisi (20.50) altında veya yakınında kalan çubuklarda etiket çubuk içine
-    (sağa dayalı, yüksek kontrastlı beyaz) yerleştirilir; çizgiyi aşanlarda dışarıya yazılır.
+    Değer etiketini max(çubuk, çizgi) değerinin sağına yerleştirerek kesikli referans
+    çizgisiyle (20.50) çakışmasını tamamen önler.
     """
     for idx, d in enumerate(data_list):
         rate = d["rate"]
         val_str = f"%{rate:.2f}".replace(".", ",")
-        will_collide = rate <= baseline + 0.1
-
-        if will_collide:
-            ax.text(
-                rate - 0.7,
-                idx,
-                val_str,
-                va="center",
-                ha="right",
-                fontsize=8.0,
-                fontweight="bold",
-                color="#FFFFFF",
-                zorder=6,
-            )
-        else:
-            x_pos = rate + 0.6
-            if x_pos < baseline + 0.8:
-                x_pos = baseline + 0.8
-            ax.text(
-                x_pos,
-                idx,
-                val_str,
-                va="center",
-                ha="left",
-                fontsize=8.0,
-                fontweight="bold",
-                color=dark_color,
-                zorder=6,
-            )
+        x_pos = max(rate, baseline) + 0.65
+        ax.text(
+            x_pos,
+            idx,
+            val_str,
+            va="center",
+            ha="left",
+            fontsize=8.0,
+            fontweight="bold",
+            color=dark_color,
+            zorder=6,
+        )
 
 
 def render_horizontal_churn_chart(
@@ -682,6 +665,7 @@ def render_horizontal_churn_chart(
     bar_color: str,
     dark_color: str,
     baseline: float,
+    sort_by_rate: bool = True,
 ) -> None:
     """
     Alt satırdaki 3 yatay çubuk grafik (Plan, Segment, Kanal) için ortak çizim motoru.
@@ -694,10 +678,10 @@ def render_horizontal_churn_chart(
         ax.spines[spine].set_color("#94A3B8")
         ax.spines[spine].set_linewidth(0.9)
 
-    items_sorted = sorted(items, key=lambda x: x["rate"], reverse=False)
-    y_pos = np.arange(len(items_sorted))
-    rates = [d["rate"] for d in items_sorted]
-    labels = [d["label"] for d in items_sorted]
+    items_ordered = sorted(items, key=lambda x: x["rate"], reverse=False) if sort_by_rate else list(items)
+    y_pos = np.arange(len(items_ordered))
+    rates = [d["rate"] for d in items_ordered]
+    labels = [d["label"] for d in items_ordered]
 
     ax.barh(y_pos, rates, height=0.54, color=bar_color, edgecolor="none", zorder=3)
 
@@ -709,13 +693,13 @@ def render_horizontal_churn_chart(
         zorder=4,
     )
 
-    render_dynamic_bar_labels(ax, items_sorted, dark_color=dark_color, baseline=baseline)
+    render_dynamic_bar_labels(ax, items_ordered, dark_color=dark_color, baseline=baseline)
 
     ax.set_yticks(y_pos)
     ax.set_yticklabels(labels, fontsize=8.0, fontweight="bold", color="#1E293B")
     ax.set_xticks([0, 10, 20, 30])
-    ax.set_xlim(0, 32.5)
-    ax.set_ylim(-0.55, len(items_sorted) - 0.45)
+    ax.set_xlim(0, 34.5)
+    ax.set_ylim(-0.55, len(items_ordered) - 0.45)
     ax.tick_params(axis="x", labelsize=8.0, colors="#1E293B")
     ax.set_xlabel("Müşteri Kaybı Oranı (%)", fontsize=8.0, fontweight="bold", color="#1E293B", labelpad=2)
     ax.grid(axis="x", linestyle=":", alpha=0.65, color="#CBD5E1", zorder=1)
@@ -891,7 +875,7 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     ax_header.text(
         0.0, 0.48,
         PROJECT_TITLE,
-        fontsize=9.5,
+        fontsize=10.5,
         fontweight="bold",
         color=COLOR_PLAN_DARK,
         va="top",
@@ -899,7 +883,7 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     )
     ax_header.text(
         0.0, 0.14,
-        "Keşifsel Veri Analizi (EDA) | Sentetik (Simüle) Veri Seti: 2.000 Abonelik | Kapsam: 01.01.2023 – 31.12.2025",
+        "Sentetik (Simüle) Veri Seti: 2.000 Abonelik | Kapsam: 01.01.2023 – 31.12.2025",
         fontsize=8.2,
         fontweight="normal",
         color="#475569",
@@ -962,7 +946,10 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
         {
             "title": "TOPLAM MRR KAYBI (%)",
             "value": f"%{kpis_data['mrr_churn_pct']:.2f}".replace(".", ","),
-            "sub": "Kaybedilen aylık gelir payı",
+            "sub": "İptal edilenlerin toplam MRR\niçindeki payı (2023-2025)",
+            "sub_fontsize": 7.2,
+            "val_y": 0.54,
+            "sub_y": 0.06,
             "accent": COLOR_CHURN,
             "val_color": "#B91C1C",
         },
@@ -1007,7 +994,7 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
         ax_kpi.add_patch(accent_bar)
 
         ax_kpi.text(
-            x0 + 0.009, 0.86,
+            x0 + 0.009, 0.88,
             kpi["title"],
             fontsize=8.0,
             fontweight="bold",
@@ -1017,7 +1004,7 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
             transform=ax_kpi.transAxes,
         )
         ax_kpi.text(
-            x0 + 0.009, 0.47,
+            x0 + 0.009, kpi.get("val_y", 0.48),
             kpi["value"],
             fontsize=20.0,
             fontweight="bold",
@@ -1027,13 +1014,14 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
             transform=ax_kpi.transAxes,
         )
         ax_kpi.text(
-            x0 + 0.009, 0.10,
+            x0 + 0.009, kpi.get("sub_y", 0.10),
             kpi["sub"],
-            fontsize=8.0,
+            fontsize=kpi.get("sub_fontsize", 8.0),
             fontweight="normal",
             color="#334155",
             va="bottom",
             ha="left",
+            linespacing=1.05,
             transform=ax_kpi.transAxes,
         )
 
@@ -1059,9 +1047,9 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     ax_card2 = fig.add_axes([0.510, 0.484, 0.460, 0.280])
     draw_card_frame(
         ax_card2,
-        title=f"Plan Bazında Gelir (MRR) ve Kayıp MRR Payı (Toplam: {tot_mrr_str} | Kayıp: {mrr_loss_str})",
-        subtitle="Her planın toplam aylık gelir (MRR) payı ile kaybedilen toplam MRR içindeki payı.",
-        title_fontsize=8.2,
+        title=f"Plan Bazında MRR ve Kayıp MRR Payı (Kayıp: {mrr_loss_str})",
+        subtitle=f"Toplam MRR ({tot_mrr_str}) içinde her planın gelir payı ile kaybedilen MRR payı.",
+        title_fontsize=8.8,
     )
     ax_g2 = fig.add_axes([0.558, 0.556, 0.398, 0.168])
     render_chart_2_mrr_by_plan(ax_g2, metrics)
@@ -1074,7 +1062,7 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
     chi_p_seg = f"{metrics['chi_square_tests']['segment']['p_value']:.2f}".replace(".", ",")
     chi_p_ch = f"{metrics['chi_square_tests']['acquisition_channel']['p_value']:.2f}".replace(".", ",")
 
-    # Kart 2A: Plan Bazında Müşteri Kaybı Oranı (Sol Alt)
+    # Kart 2A: Plan Bazında Müşteri Kaybı Oranı (Sol Alt) - Sıra: Enterprise, Scale, Growth, Starter (yukarıdan aşağıya)
     ax_card3 = fig.add_axes([0.030, 0.204, 0.302, 0.264])
     draw_card_frame(
         ax_card3,
@@ -1084,16 +1072,19 @@ def build_full_dashboard(df: pd.DataFrame, metrics: Dict[str, Any]) -> plt.Figur
         baseline=baseline_val,
         title_fontsize=8.5,
     )
+    plan_by_raw = {vals["raw_key"]: (tr_name, vals) for tr_name, vals in metrics["plan_analysis"].items()}
+    # ax.barh y=0 en altta, y=3 en üstte çizdiği için yukarıdan aşağıya Enterprise, Scale, Growth, Starter görünmesi için:
+    plan_order_bottom_to_top = ["Starter", "Growth", "Scale", "Enterprise"]
     plan_items = [
         {
-            "name": tr_name,
-            "rate": vals["churn_rate_pct"],
-            "label": PLAN_BAR_TR_MAP[vals["raw_key"]].format(n=f"{vals['total']:,}".replace(",", ".")),
+            "name": plan_by_raw[rk][0],
+            "rate": plan_by_raw[rk][1]["churn_rate_pct"],
+            "label": PLAN_BAR_TR_MAP[rk].format(n=f"{plan_by_raw[rk][1]['total']:,}".replace(",", ".")),
         }
-        for tr_name, vals in metrics["plan_analysis"].items()
+        for rk in plan_order_bottom_to_top
     ]
     ax_g3 = fig.add_axes([0.148, 0.278, 0.172, 0.125])
-    render_horizontal_churn_chart(ax_g3, plan_items, COLOR_PLAN, COLOR_PLAN_DARK, baseline_val)
+    render_horizontal_churn_chart(ax_g3, plan_items, COLOR_PLAN, COLOR_PLAN_DARK, baseline_val, sort_by_rate=False)
 
     # Kart 2B: Segment Bazında Müşteri Kaybı Oranı (Orta Alt)
     ax_card4 = fig.add_axes([0.349, 0.204, 0.302, 0.264])

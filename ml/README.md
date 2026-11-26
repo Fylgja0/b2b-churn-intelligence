@@ -37,8 +37,18 @@ ml/
 │   │   └── eda.py                      # İstatistiksel analiz ve 12 adet görselleştirme üretici
 │   ├── features/
 │   │   └── build_features.py           # Zaman noktası tabanlı sızıntısız özellik mühendisliği ve kohort oluşturucu
-│   ├── models/                         # (Gelecek geliştirme) ML modelleri
-│   └── evaluation/                     # (Gelecek geliştirme) Model değerlendirme
+│   ├── models/                         # Ortak ML modelleme altyapısı (Eğitim henüz başlatılmadı)
+│   │   ├── __init__.py
+│   │   ├── experiment_config.py        # feature_manifest.json tabanlı senaryo konfigürasyonu
+│   │   ├── preprocessing.py            # Sızıntısız scikit-learn ColumnTransformer & Pipeline
+│   │   ├── model_registry.py           # Genişletilebilir baseline model kayıt defteri
+│   │   ├── cross_validation.py         # Deterministik StratifiedKFold ve OOF tahmin motoru
+│   │   └── train.py                    # Tek ortak deney çalıştırıcı ve CLI
+│   └── evaluation/                     # Merkezi metrik, görselleştirme ve senaryo karşılaştırma
+│       ├── __init__.py
+│       ├── metrics.py                  # Önceliklendirilmiş ikili sınıflandırma metrikleri
+│       ├── plots.py                    # PR/ROC eğrileri ve senaryo karşılaştırma grafikleri
+│       └── compare_experiments.py      # region_included vs region_excluded karşılaştırıcı
 ├── reports/
 │   ├── cleaning/                       # Temizlik ve doğrulama JSON ve Markdown raporları
 │   │   ├── cleaning_report.md
@@ -46,33 +56,43 @@ ml/
 │   │   ├── validation_report.md
 │   │   ├── validation_report.json
 │   │   └── dataset_build_summary.json
-│   └── eda/                            # EDA özet raporları ve yüksek çözünürlüklü grafikler
-│       ├── eda_summary_report.md
-│       ├── eda_metrics.json
-│       └── figures/
-│           ├── 01_churn_distribution.png
-│           ├── 02_churn_by_plan.png
-│           ├── 03_churn_by_segment.png
-│           ├── 04_churn_by_region.png
-│           ├── 05_churn_by_acquisition_channel.png
-│           ├── 06_mrr_distribution_by_churn.png
-│           ├── 07_tenure_distribution_by_churn.png
-│           ├── 08_missing_values_matrix.png
-│           ├── 09_numeric_distributions.png
-│           ├── 10_monthly_churn_trend.png
-│           ├── 11_payment_failures_vs_churn_cohort.png
-│           └── 12_invoice_coverage_breakdown.png
-│   └── modeling/                       # Modelleme kohortu, hedef dağılımı ve feature manifest raporları
+│   ├── eda/                            # EDA özet raporları ve yüksek çözünürlüklü grafikler
+│   │   ├── eda_summary_report.md
+│   │   ├── eda_metrics.json
+│   │   └── figures/
+│   │       ├── 01_churn_distribution.png
+│   │       ├── 02_churn_by_plan.png
+│   │       ├── 03_churn_by_segment.png
+│   │       ├── 04_churn_by_region.png
+│   │       ├── 05_churn_by_acquisition_channel.png
+│   │       ├── 06_mrr_distribution_by_churn.png
+│   │       ├── 07_tenure_distribution_by_churn.png
+│   │       ├── 08_missing_values_matrix.png
+│   │       ├── 09_numeric_distributions.png
+│   │       ├── 10_monthly_churn_trend.png
+│   │       ├── 11_payment_failures_vs_churn_cohort.png
+│   │       └── 12_invoice_coverage_breakdown.png
+│   └── modeling/                       # Modelleme kohortu, feature manifest ve deney rapor alanları
 │       ├── modeling_dataset_report.md
 │       ├── modeling_dataset_summary.json
-│       └── feature_manifest.json
-├── artifacts/                          # İleride eğitilecek modeller ve scaler nesneleri için
-└── tests/                              # Pytest test paketi (65 adet pozitif ve negatif test)
+│       ├── feature_manifest.json
+│       └── experiments/                # (Eğitim çalıştırıldığında üretilecek çıktılar için hazır alan)
+│           ├── region_included/
+│           ├── region_excluded/
+│           └── comparison/
+├── artifacts/
+│   └── models/                         # (Eğitim çalıştırıldığında kaydedilecek .joblib modeller)
+│       ├── region_included/
+│       └── region_excluded/
+└── tests/                              # Pytest test paketi (100 adet pozitif ve negatif test)
     ├── test_preprocess.py              # Ham veri varlığı, temizlik, tekilleştirme ve tip testleri (5 test)
     ├── test_validation.py              # 39 doğrulama kontrolü, dinamik kardinalite ve 18 negatif test (28 test)
     ├── test_build_dataset.py           # 2 aşamalı birleştirme ve tane seviyesi testleri (4 test)
     ├── test_eda.py                     # Ki-kare, Cochran kuralı, Cochran ihlali ve dejenere matris testleri (6 test)
-    └── test_features.py                # Kohort, hedef pencereleri, leakage koruması ve zamansal testler (22 test)
+    ├── test_features.py                # Kohort, hedef pencereleri, leakage koruması ve zamansal testler (22 test)
+    ├── test_vize_dashboard.py          # Vize dashboard ve bulgu raporu tutarlılık testleri (6 test)
+    ├── test_models.py                  # Model registry, senaryo ayrımı, leakage ve CV/OOF testleri (16 test)
+    └── test_evaluation.py              # Metrik doğruluğu, sınıf dağılımı, grafik ve karşılaştırma testleri (13 test)
 ```
 
 ---
@@ -152,7 +172,7 @@ python -m ml.src.features.build_features
 *Çıktılar*: `ml/data/processed/modeling/churn_modeling_dataset.csv`, `ml/reports/modeling/modeling_dataset_report.md`, `ml/reports/modeling/modeling_dataset_summary.json`, `ml/reports/modeling/feature_manifest.json`
 
 ### Adım 6: Otomatik Testlerin Çalıştırılması (Testing)
-Veri işleme, bütünlük ve birleştirme kurallarının yanı sıra EDA varsayım kontrolleri ve zaman noktası tabanlı modelleme özellik mühendisliğini `pytest` ile test eder. Test paketi pozitif ve negatif kontroller, dinamik kardinalite testleri, Cochran varsayım denetimleri, kohort sınır koşulları, leakage izolasyon testleri ve taşınabilirlik kontrollerini içerir (**Toplam 65 test**).
+Veri işleme, bütünlük ve birleştirme kurallarının yanı sıra EDA varsayım kontrolleri, zaman noktası tabanlı özellik mühendisliği, vize dashboard tutarlılığı ve yeni ML modelleme / değerlendirme altyapısını `pytest` ile test eder. Test paketi pozitif ve negatif kontroller, dinamik kardinalite testleri, Cochran varsayım denetimleri, kohort sınır koşulları, leakage izolasyon testleri, senaryo konfigürasyonu, CV/OOF determinizmi ve metrik doğrulamasını içerir (**Toplam 100 test**).
 
 ```bash
 pytest ml/tests -v
@@ -192,11 +212,69 @@ pytest ml/tests -v
 
 ---
 
-## 6. Kapsam Dışı Bırakılan Unsurlar (Sonraki Aşamalar)
+## 6. Makine Öğrenmesi Modelleme Altyapısı
 
-Bu fazda kasıtlı olarak kapsam dışı bırakılan ve sonraki adımlarda geliştirilecek bileşenler:
-- Makine öğrenmesi modelleri (Logistic Regression, Random Forest, XGBoost vb.)
-- Model hiperparametre optimizasyonu ve çapraz doğrulama
+> [!IMPORTANT]
+> **Durum Notu – Model Eğitimi Henüz Başlatılmadı**:
+> Modelleme, çapraz doğrulama, değerlendirme ve senaryo karşılaştırma altyapısı kurulmuş ve sentetik veri tabanlı otomatik testlerle doğrulanmıştır. **Gerçek veri seti (`churn_modeling_dataset.csv`) üzerinde baseline model eğitim deneyleri henüz çalıştırılmamıştır** ve bir sonraki aşamada ayrıca başlatılacaktır.
+
+### 6.1. Tek Ortak Mimari ve Manifest Kaynağı
+- Tüm özellik, metadata, hedef ve hariç tutulan (leakage/unverified) sütun tanımları tek kaynak olan `ml/reports/modeling/feature_manifest.json` dosyasından dinamik olarak okunur (`ml/src/models/experiment_config.py`).
+- Metadata alanları (`subscription_id`, `account_id`) ve hedef/sızıntı alanları hiçbir koşulda model girdisi olarak kullanılmaz; ID sütunları yalnızca out-of-fold (OOF) tahmin izlenebilirliği için çıktı tablolarına eklenir.
+- Üç hedef değişkenin (`target_churn_90d`, `target_churn_180d`, `target_churn_365d`) tamamı ayrı ayrı modellenebilir; ana modelleme hedefi **`target_churn_365d`** olarak belirlenmiştir.
+
+### 6.2. İki Deney Senaryosu (Bölge Özelliği Etki Karşılaştırması)
+İki senaryo için kopyalanmış kod yerine tek ortak altyapı üzerinden senaryo konfigürasyonu kullanılır:
+- **Senaryo A (`region_included`)**: `region` kategorik özellik olarak modele dahil edilir; 321 eksik kayıt ham CSV üzerinde değiştirilmez, pipeline içinde `Unknown` kategorisine dönüştürülür. Aynı eksiklik bilgisinin iki kez verilmesini önlemek için `region_missing_flag` bu senaryoda **hariç tutulur** (11 özellik: 4 kategorik, 7 sayısal).
+- **Senaryo B (`region_excluded`)**: `region` ve `region_missing_flag` özellikleri model girdilerinden tamamen çıkarılır; hiçbir müşteri kaydı silinmez (10 özellik: 3 kategorik, 7 sayısal).
+- **Adil Karşılaştırma İlkesi**: Her iki senaryoda da aynı 1.242 gözlem, aynı hedefler, aynı CV fold indeksleri, aynı algoritmalar/hiperparametreler ve aynı değerlendirme metrikleri kullanılır.
+
+### 6.3. Baseline Model Registry (`ml/src/models/model_registry.py`)
+İlk baseline aşamasında SMOTE, class weighting veya hiperparametre optimizasyonu uygulanmadan aşağıdaki 4 algoritma desteklenir (yeni algoritmalar `ModelRegistry.register(...)` ile kolayca eklenebilir):
+1. **`dummy`** (*Referans Model*): `DummyClassifier(strategy="prior")`
+2. **`logistic_regression`**: `LogisticRegression(max_iter=2000, solver="lbfgs", random_state=42)` (varsayılan sınıf ağırlığı)
+3. **`random_forest`**: `RandomForestClassifier(n_estimators=300, random_state=42, n_jobs=-1)`
+4. **`gradient_boosting`**: `GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42)`
+
+### 6.4. Sızıntısız Veri Ön İşleme (`ml/src/models/preprocessing.py`)
+- Tüm dönüşümler scikit-learn `Pipeline` ve `ColumnTransformer(remainder="drop")` içinde tanımlanır ve yalnızca ilgili eğitim fold'unda fit edilir.
+- **Kategorik özellikler**: `SimpleImputer(strategy="constant", fill_value="Unknown")` + `OneHotEncoder(handle_unknown="ignore")`.
+- **Sayısal özellikler**: `SimpleImputer(strategy="median")`; `StandardScaler` yalnızca ölçekleme gerektiren modellerde (`logistic_regression`) uygulanır, ağaç tabanlı modellerde uygulanmaz.
+
+### 6.5. Çapraz Doğrulama ve OOF Tahminleri (`ml/src/models/cross_validation.py`)
+- `StratifiedKFold(n_splits=5, shuffle=True, random_state=42)` kullanılır. Mevcut veri setinde her müşteri için tek abonelik gözlemi bulunduğundan başlangıçta `GroupKFold` kullanılmamıştır.
+- Her hedef değişken için üretilen fold indeksleri iki bölge senaryosunda da birebir aynıdır.
+- Özellikle `target_churn_90d` hedefinde yalnızca 56 pozitif örnek bulunduğundan, her fold için eğitim/doğrulama sınıf dağılımları ve pozitif sayıları raporlanır.
+- Her gözlem kendi doğrulama fold'undan tam olarak bir kez out-of-fold (OOF) tahmini alır (`subscription_id`, `account_id`, `target`, `model`, `y_true`, `y_probability`, `y_pred_0_5`, `fold`).
+
+### 6.6. Değerlendirme Metrikleri ve Karşılaştırma (`ml/src/evaluation/`)
+Öncelik sırası:
+1. **Average Precision (AP)** (`average_precision_score` — **birincil karşılaştırma metriği**)
+2. **ROC-AUC**
+3. **Recall** (`0.5` karar eşiğinde — optimize edilmemiş baseline eşiği)
+4. **Precision** (`0.5` karar eşiğinde — optimize edilmemiş baseline eşiği)
+5. **F1-score** (`0.5` karar eşiğinde — optimize edilmemiş baseline eşiği)
+6. **Brier Score** (olasılık kalibrasyonu; düşük olması daha iyidir)
+
+Accuracy, sınıf dengesizliği nedeniyle model seçim kriteri olarak kullanılmaz. Sonraki aşamada baseline deneylerini çalıştırmak için kullanılacak CLI komutları:
+
+```bash
+# Tek senaryo çalıştırma
+python -m ml.src.models.train --scenario region_included
+python -m ml.src.models.train --scenario region_excluded
+
+# Her iki senaryoyu birlikte çalıştırıp karşılaştırma raporu üretme
+python -m ml.src.models.train --scenario all --compare
+```
+
+---
+
+## 7. Kapsam Dışı Bırakılan Unsurlar (Sonraki Aşamalar)
+
+Bu fazda kasıtlı olarak kapsam dışı bırakılan ve sonraki adımlarda yürütülecek çalışmalar:
+- Gerçek veri seti üzerinde baseline model eğitim deneylerinin çalıştırılması ve analiz edilmesi
+- Hiperparametre optimizasyonu, SMOTE, class weighting ve karar eşiği (threshold) optimizasyonu
+- Ek gradient boosting kütüphaneleri (XGBoost, LightGBM, CatBoost)
 - Model tahmin API'si
 - C# / ASP.NET Core Web API backend servisi
 - Next.js kullanıcı arayüzü (frontend)
@@ -204,7 +282,7 @@ Bu fazda kasıtlı olarak kapsam dışı bırakılan ve sonraki adımlarda geli�
 
 ---
 
-## 7. Orijinal Veri Seti Lisansı ve Kaynak Gösterimi
+## 8. Orijinal Veri Seti Lisansı ve Kaynak Gösterimi
 
 Bu veri seti **Creative Commons Attribution 4.0 International (CC BY 4.0)** lisansı altında lisanslanmıştır.
 

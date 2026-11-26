@@ -65,6 +65,11 @@ Thumbs.db
 ehthumbs.db
 desktop.ini
 
+# Trained model binary artifacts (not required in Git; keep .gitkeep tracked)
+ml/artifacts/models/**/*.joblib
+ml/artifacts/models/**/*.pkl
+ml/artifacts/models/**/*.pickle
+
 # Explicit inclusions: Ensure critical data, reports, figures and documentation are tracked
 !ml/data/raw/*.csv
 !ml/data/processed/
